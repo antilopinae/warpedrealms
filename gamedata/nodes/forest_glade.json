@@ -1,0 +1,121 @@
+{
+  "id": "forest_glade",
+  "width": 110,
+  "height": 200,
+  "tags": [
+    "forest"
+  ],
+  "leftSocket": {
+    "SurfaceY": 150,
+    "Type": "platform"
+  },
+  "rightSocket": {
+    "SurfaceY": 148,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 150,
+      "W": 28,
+      "H": 4,
+      "Kind": "main"
+    },
+    {
+      "X": 42,
+      "Y": 157,
+      "W": 25,
+      "H": 4,
+      "Kind": "main"
+    },
+    {
+      "X": 80,
+      "Y": 148,
+      "W": 27,
+      "H": 4,
+      "Kind": "main"
+    },
+    {
+      "X": 32,
+      "Y": 142,
+      "W": 8,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 70,
+      "Y": 138,
+      "W": 8,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 8,
+      "Y": 118,
+      "W": 28,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 50,
+      "Y": 112,
+      "W": 25,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 82,
+      "Y": 118,
+      "W": 25,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 15,
+      "Y": 82,
+      "W": 25,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 55,
+      "Y": 75,
+      "W": 25,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 85,
+      "Y": 80,
+      "W": 20,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 25,
+      "Y": 48,
+      "W": 60,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 30,
+      "Y": 15,
+      "W": 50,
+      "H": 2,
+      "Kind": "secret"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Rat",
+      "X": 45,
+      "Y": 154
+    },
+    {
+      "Type": "Rat",
+      "X": 55,
+      "Y": 109
+    }
+  ]
+}

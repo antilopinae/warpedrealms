@@ -1,0 +1,78 @@
+{
+  "id": "connector_rise",
+  "width": 65,
+  "height": 200,
+  "tags": [
+    "ruins",
+    "crystal",
+    "forest",
+    "connector"
+  ],
+  "leftSocket": {
+    "SurfaceY": 165,
+    "Type": "platform"
+  },
+  "rightSocket": {
+    "SurfaceY": 140,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 165,
+      "W": 18,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 22,
+      "Y": 155,
+      "W": 14,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 36,
+      "Y": 148,
+      "W": 14,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 50,
+      "Y": 140,
+      "W": 14,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 5,
+      "Y": 120,
+      "W": 20,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 35,
+      "Y": 108,
+      "W": 20,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 8,
+      "Y": 72,
+      "W": 45,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 15,
+      "Y": 20,
+      "W": 35,
+      "H": 2,
+      "Kind": "secret"
+    }
+  ],
+  "entities": []
+}

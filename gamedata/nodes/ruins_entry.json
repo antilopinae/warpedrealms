@@ -1,0 +1,94 @@
+{
+  "id": "ruins_entry",
+  "width": 120,
+  "height": 200,
+  "tags": [
+    "ruins",
+    "start"
+  ],
+  "leftSocket": {
+    "SurfaceY": 158,
+    "Type": "open"
+  },
+  "rightSocket": {
+    "SurfaceY": 152,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 4,
+      "Y": 158,
+      "W": 48,
+      "H": 4,
+      "Kind": "main"
+    },
+    {
+      "X": 55,
+      "Y": 144,
+      "W": 22,
+      "H": 3,
+      "Kind": "branch"
+    },
+    {
+      "X": 40,
+      "Y": 120,
+      "W": 30,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 88,
+      "Y": 152,
+      "W": 28,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 50,
+      "Y": 78,
+      "W": 35,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 20,
+      "Y": 12,
+      "W": 40,
+      "H": 2,
+      "Kind": "secret"
+    },
+    {
+      "X": 15,
+      "Y": 105,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 78,
+      "Y": 98,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 70,
+      "Y": 45,
+      "W": 25,
+      "H": 2,
+      "Kind": "secret"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Player",
+      "X": 22,
+      "Y": 155
+    },
+    {
+      "Type": "Rat",
+      "X": 60,
+      "Y": 141
+    }
+  ]
+}

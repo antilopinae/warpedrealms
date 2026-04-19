@@ -1,0 +1,128 @@
+{
+  "id": "forest_trunk",
+  "width": 80,
+  "height": 200,
+  "tags": [
+    "forest"
+  ],
+  "leftSocket": {
+    "SurfaceY": 155,
+    "Type": "platform"
+  },
+  "rightSocket": {
+    "SurfaceY": 150,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 155,
+      "W": 22,
+      "H": 4,
+      "Kind": "main"
+    },
+    {
+      "X": 55,
+      "Y": 150,
+      "W": 22,
+      "H": 4,
+      "Kind": "main"
+    },
+    {
+      "X": 10,
+      "Y": 140,
+      "W": 25,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 41,
+      "Y": 130,
+      "W": 25,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 8,
+      "Y": 118,
+      "W": 22,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 43,
+      "Y": 108,
+      "W": 22,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 10,
+      "Y": 96,
+      "W": 22,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 41,
+      "Y": 86,
+      "W": 22,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 8,
+      "Y": 74,
+      "W": 22,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 43,
+      "Y": 64,
+      "W": 22,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 10,
+      "Y": 52,
+      "W": 22,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 12,
+      "Y": 32,
+      "W": 56,
+      "H": 3,
+      "Kind": "secret"
+    },
+    {
+      "X": 22,
+      "Y": 168,
+      "W": 10,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 48,
+      "Y": 165,
+      "W": 10,
+      "H": 2,
+      "Kind": "step"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Rat",
+      "X": 20,
+      "Y": 137
+    },
+    {
+      "Type": "Rat",
+      "X": 55,
+      "Y": 127
+    }
+  ]
+}

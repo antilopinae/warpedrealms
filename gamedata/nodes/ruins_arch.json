@@ -1,0 +1,100 @@
+{
+  "id": "ruins_arch",
+  "width": 100,
+  "height": 200,
+  "tags": [
+    "ruins"
+  ],
+  "leftSocket": {
+    "SurfaceY": 152,
+    "Type": "platform"
+  },
+  "rightSocket": {
+    "SurfaceY": 148,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 152,
+      "W": 32,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 65,
+      "Y": 148,
+      "W": 32,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 30,
+      "Y": 112,
+      "W": 40,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 10,
+      "Y": 80,
+      "W": 28,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 65,
+      "Y": 75,
+      "W": 28,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 30,
+      "Y": 45,
+      "W": 40,
+      "H": 2,
+      "Kind": "secret"
+    },
+    {
+      "X": 5,
+      "Y": 125,
+      "W": 14,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 5,
+      "Y": 105,
+      "W": 14,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 80,
+      "Y": 120,
+      "W": 14,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 80,
+      "Y": 100,
+      "W": 14,
+      "H": 2,
+      "Kind": "step"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Rat",
+      "X": 45,
+      "Y": 108
+    },
+    {
+      "Type": "Rat",
+      "X": 75,
+      "Y": 145
+    }
+  ]
+}

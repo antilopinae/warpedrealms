@@ -1,0 +1,93 @@
+{
+  "id": "ruins_tower",
+  "width": 80,
+  "height": 200,
+  "tags": [
+    "ruins"
+  ],
+  "leftSocket": {
+    "SurfaceY": 162,
+    "Type": "platform"
+  },
+  "rightSocket": {
+    "SurfaceY": 162,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 162,
+      "W": 28,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 49,
+      "Y": 162,
+      "W": 28,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 18,
+      "Y": 145,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 44,
+      "Y": 128,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 18,
+      "Y": 110,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 44,
+      "Y": 92,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 18,
+      "Y": 74,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 44,
+      "Y": 56,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 20,
+      "Y": 38,
+      "W": 38,
+      "H": 3,
+      "Kind": "secret"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Rat",
+      "X": 20,
+      "Y": 159
+    },
+    {
+      "Type": "Rat",
+      "X": 58,
+      "Y": 159
+    }
+  ]
+}

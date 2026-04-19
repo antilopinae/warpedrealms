@@ -1,0 +1,135 @@
+{
+  "id": "crystal_cave",
+  "width": 90,
+  "height": 200,
+  "tags": [
+    "crystal"
+  ],
+  "leftSocket": {
+    "SurfaceY": 158,
+    "Type": "platform"
+  },
+  "rightSocket": {
+    "SurfaceY": 152,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 158,
+      "W": 25,
+      "H": 4,
+      "Kind": "main"
+    },
+    {
+      "X": 65,
+      "Y": 152,
+      "W": 22,
+      "H": 4,
+      "Kind": "main"
+    },
+    {
+      "X": 30,
+      "Y": 148,
+      "W": 8,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 42,
+      "Y": 138,
+      "W": 8,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 30,
+      "Y": 128,
+      "W": 8,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 50,
+      "Y": 118,
+      "W": 8,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 35,
+      "Y": 108,
+      "W": 8,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 8,
+      "Y": 95,
+      "W": 25,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 58,
+      "Y": 88,
+      "W": 25,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 20,
+      "Y": 58,
+      "W": 50,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 5,
+      "Y": 138,
+      "W": 10,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 5,
+      "Y": 118,
+      "W": 10,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 72,
+      "Y": 133,
+      "W": 10,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 72,
+      "Y": 113,
+      "W": 10,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 25,
+      "Y": 20,
+      "W": 40,
+      "H": 2,
+      "Kind": "secret"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Rat",
+      "X": 40,
+      "Y": 145
+    },
+    {
+      "Type": "Rat",
+      "X": 40,
+      "Y": 105
+    }
+  ]
+}

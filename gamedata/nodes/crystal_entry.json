@@ -1,0 +1,122 @@
+{
+  "id": "crystal_entry",
+  "width": 100,
+  "height": 200,
+  "tags": [
+    "crystal",
+    "start"
+  ],
+  "leftSocket": {
+    "SurfaceY": 162,
+    "Type": "open"
+  },
+  "rightSocket": {
+    "SurfaceY": 155,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 162,
+      "W": 30,
+      "H": 4,
+      "Kind": "main"
+    },
+    {
+      "X": 40,
+      "Y": 150,
+      "W": 12,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 54,
+      "Y": 140,
+      "W": 10,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 66,
+      "Y": 130,
+      "W": 10,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 78,
+      "Y": 155,
+      "W": 20,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 20,
+      "Y": 120,
+      "W": 8,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 35,
+      "Y": 108,
+      "W": 6,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 50,
+      "Y": 97,
+      "W": 8,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 65,
+      "Y": 86,
+      "W": 6,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 78,
+      "Y": 75,
+      "W": 8,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 15,
+      "Y": 65,
+      "W": 28,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 60,
+      "Y": 55,
+      "W": 28,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 30,
+      "Y": 18,
+      "W": 40,
+      "H": 2,
+      "Kind": "secret"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Player",
+      "X": 15,
+      "Y": 159
+    },
+    {
+      "Type": "Rat",
+      "X": 48,
+      "Y": 147
+    }
+  ]
+}

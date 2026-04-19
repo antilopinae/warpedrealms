@@ -1,0 +1,141 @@
+{
+  "id": "forest_canopy",
+  "width": 120,
+  "height": 200,
+  "tags": [
+    "forest",
+    "start"
+  ],
+  "leftSocket": {
+    "SurfaceY": 160,
+    "Type": "open"
+  },
+  "rightSocket": {
+    "SurfaceY": 155,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 160,
+      "W": 35,
+      "H": 6,
+      "Kind": "main"
+    },
+    {
+      "X": 85,
+      "Y": 155,
+      "W": 32,
+      "H": 6,
+      "Kind": "main"
+    },
+    {
+      "X": 5,
+      "Y": 138,
+      "W": 22,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 40,
+      "Y": 133,
+      "W": 25,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 80,
+      "Y": 130,
+      "W": 22,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 15,
+      "Y": 108,
+      "W": 20,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 55,
+      "Y": 102,
+      "W": 22,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 95,
+      "Y": 105,
+      "W": 20,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 8,
+      "Y": 80,
+      "W": 18,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 45,
+      "Y": 75,
+      "W": 20,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 90,
+      "Y": 78,
+      "W": 18,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 25,
+      "Y": 52,
+      "W": 70,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 40,
+      "Y": 18,
+      "W": 45,
+      "H": 2,
+      "Kind": "secret"
+    },
+    {
+      "X": 30,
+      "Y": 118,
+      "W": 10,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 72,
+      "Y": 116,
+      "W": 10,
+      "H": 2,
+      "Kind": "step"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Player",
+      "X": 18,
+      "Y": 157
+    },
+    {
+      "Type": "Rat",
+      "X": 50,
+      "Y": 130
+    },
+    {
+      "Type": "Rat",
+      "X": 95,
+      "Y": 99
+    }
+  ]
+}

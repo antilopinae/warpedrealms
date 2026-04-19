@@ -1,0 +1,40 @@
+{
+  "bindings": {
+    "attack": {
+      "kind": "key",
+      "code": 8
+    },
+    "interact": {
+      "kind": "key",
+      "code": 5
+    },
+    "jump": {
+      "kind": "key",
+      "code": 116
+    },
+    "move_left": {
+      "kind": "key",
+      "code": 0
+    },
+    "move_right": {
+      "kind": "key",
+      "code": 3
+    },
+    "skill_1": {
+      "kind": "key",
+      "code": 14
+    },
+    "skill_2": {
+      "kind": "key",
+      "code": 15
+    },
+    "skill_3": {
+      "kind": "key",
+      "code": 35
+    },
+    "use_jump_link": {
+      "kind": "key",
+      "code": 4
+    }
+  }
+}

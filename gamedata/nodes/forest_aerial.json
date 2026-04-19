@@ -1,0 +1,109 @@
+{
+  "id": "forest_aerial",
+  "width": 100,
+  "height": 200,
+  "tags": [
+    "forest"
+  ],
+  "leftSocket": {
+    "SurfaceY": 148,
+    "Type": "platform"
+  },
+  "rightSocket": {
+    "SurfaceY": 152,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 148,
+      "W": 22,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 75,
+      "Y": 152,
+      "W": 22,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 38,
+      "Y": 140,
+      "W": 24,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 10,
+      "Y": 128,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 32,
+      "Y": 115,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 55,
+      "Y": 102,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 72,
+      "Y": 90,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 50,
+      "Y": 78,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 25,
+      "Y": 67,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 10,
+      "Y": 55,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 35,
+      "Y": 44,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 30,
+      "Y": 20,
+      "W": 40,
+      "H": 2,
+      "Kind": "secret"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Rat",
+      "X": 45,
+      "Y": 137
+    }
+  ]
+}

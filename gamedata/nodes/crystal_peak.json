@@ -1,0 +1,142 @@
+{
+  "id": "crystal_peak",
+  "width": 100,
+  "height": 200,
+  "tags": [
+    "crystal"
+  ],
+  "leftSocket": {
+    "SurfaceY": 152,
+    "Type": "platform"
+  },
+  "rightSocket": {
+    "SurfaceY": 152,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 152,
+      "W": 25,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 72,
+      "Y": 152,
+      "W": 25,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 35,
+      "Y": 168,
+      "W": 30,
+      "H": 5,
+      "Kind": "main"
+    },
+    {
+      "X": 40,
+      "Y": 150,
+      "W": 20,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 43,
+      "Y": 125,
+      "W": 14,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 45,
+      "Y": 100,
+      "W": 10,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 46,
+      "Y": 75,
+      "W": 8,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 47,
+      "Y": 50,
+      "W": 6,
+      "H": 2,
+      "Kind": "secret"
+    },
+    {
+      "X": 20,
+      "Y": 138,
+      "W": 12,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 25,
+      "Y": 118,
+      "W": 12,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 22,
+      "Y": 95,
+      "W": 12,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 68,
+      "Y": 133,
+      "W": 12,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 65,
+      "Y": 112,
+      "W": 12,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 68,
+      "Y": 88,
+      "W": 12,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 5,
+      "Y": 70,
+      "W": 22,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 73,
+      "Y": 65,
+      "W": 22,
+      "H": 2,
+      "Kind": "branch"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Rat",
+      "X": 50,
+      "Y": 122
+    },
+    {
+      "Type": "Rat",
+      "X": 50,
+      "Y": 97
+    }
+  ]
+}

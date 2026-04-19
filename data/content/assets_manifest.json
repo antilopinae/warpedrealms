@@ -1,0 +1,450 @@
+{
+  "version": "2026-04-18-kotlin-mlp",
+  "profiles": {
+    "mob_rat": {
+      "id": "mob_rat",
+      "name": "Cave Rat",
+      "kind": "rat",
+      "faction": "monsters",
+      "family_id": "rat",
+      "scale": 1,
+      "sprite_size": {
+        "x": 64,
+        "y": 64
+      },
+      "sprite_offset": {
+        "x": 2,
+        "y": -28
+      },
+      "collider": {
+        "x": 0,
+        "y": 0,
+        "w": 34,
+        "h": 24
+      },
+      "hurtbox": {
+        "x": 0,
+        "y": 0,
+        "w": 34,
+        "h": 24
+      },
+      "interaction_box": {
+        "x": -8,
+        "y": -6,
+        "w": 52,
+        "h": 40
+      },
+      "sort_anchor": {
+        "x": 17,
+        "y": 24
+      },
+      "max_hp": 45,
+      "moveset": "walker",
+      "animations": [
+        {
+          "state": "idle",
+          "pattern": "gamedata/graphics/monster/rat/idle_*.png",
+          "frame_duration": 0.125,
+          "loop": true
+        },
+        {
+          "state": "run",
+          "pattern": "gamedata/graphics/monster/rat/run_*.png",
+          "frame_duration": 0.125,
+          "loop": true
+        },
+        {
+          "state": "attack1",
+          "pattern": "gamedata/graphics/monster/rat/attack_*.png",
+          "frame_duration": 0.125,
+          "loop": false
+        },
+        {
+          "state": "hit",
+          "pattern": "gamedata/graphics/monster/rat/takehit_*.png",
+          "frame_duration": 0.125,
+          "loop": false
+        },
+        {
+          "state": "death",
+          "pattern": "gamedata/graphics/monster/rat/death_*.png",
+          "frame_duration": 0.125,
+          "loop": false
+        }
+      ],
+      "hitboxes": [
+        {
+          "state": "attack1",
+          "frames": [
+            {
+              "start": 0.25,
+              "end": 0.75,
+              "box": {
+                "x": 18,
+                "y": 4,
+                "w": 34,
+                "h": 16
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "player_archer": {
+      "id": "player_archer",
+      "name": "Archer Assassin",
+      "kind": "player",
+      "faction": "players",
+      "family_id": "human_archer",
+      "class_id": "archer_assassin",
+      "scale": 1,
+      "sprite_size": {
+        "x": 162,
+        "y": 162
+      },
+      "sprite_offset": {
+        "x": -25,
+        "y": -40
+      },
+      "collider": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 72
+      },
+      "hurtbox": {
+        "x": 2,
+        "y": 0,
+        "w": 20,
+        "h": 70
+      },
+      "interaction_box": {
+        "x": -18,
+        "y": -8,
+        "w": 60,
+        "h": 86
+      },
+      "sort_anchor": {
+        "x": 12,
+        "y": 70
+      },
+      "max_hp": 110,
+      "moveset": "humanoid"
+    },
+    "player_caster": {
+      "id": "player_caster",
+      "name": "Forest Caster",
+      "kind": "player",
+      "faction": "players",
+      "family_id": "human_caster",
+      "class_id": "forest_caster",
+      "scale": 1,
+      "sprite_size": {
+        "x": 162,
+        "y": 162
+      },
+      "sprite_offset": {
+        "x": -25,
+        "y": -40
+      },
+      "collider": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 72
+      },
+      "hurtbox": {
+        "x": 2,
+        "y": 0,
+        "w": 20,
+        "h": 70
+      },
+      "interaction_box": {
+        "x": -18,
+        "y": -8,
+        "w": 60,
+        "h": 86
+      },
+      "sort_anchor": {
+        "x": 12,
+        "y": 70
+      },
+      "max_hp": 95,
+      "moveset": "humanoid"
+    },
+    "player_knight": {
+      "id": "player_knight",
+      "name": "Knight",
+      "kind": "player",
+      "faction": "players",
+      "family_id": "human_knight",
+      "class_id": "knight",
+      "scale": 1,
+      "sprite_size": {
+        "x": 162,
+        "y": 162
+      },
+      "sprite_offset": {
+        "x": -22,
+        "y": -38
+      },
+      "collider": {
+        "x": 42,
+        "y": 10,
+        "w": 26,
+        "h": 52
+      },
+      "hurtbox": {
+        "x": 42,
+        "y": 10,
+        "w": 22,
+        "h": 52
+      },
+      "interaction_box": {
+        "x": 42,
+        "y": 12,
+        "w": 62,
+        "h": 72
+      },
+      "sort_anchor": {
+        "x": 13,
+        "y": 74
+      },
+      "max_hp": 150,
+      "moveset": "humanoid",
+      "animations": [
+        {
+          "state": "idle",
+          "pattern": "gamedata/graphics/hero/fantazy_warrior/idle_*.png",
+          "frame_duration": 0.125,
+          "loop": true
+        },
+        {
+          "state": "run",
+          "pattern": "gamedata/graphics/hero/fantazy_warrior/run_*.png",
+          "frame_duration": 0.125,
+          "loop": true
+        },
+        {
+          "state": "jump",
+          "pattern": "gamedata/graphics/hero/fantazy_warrior/jump_*.png",
+          "frame_duration": 0.125,
+          "loop": false
+        },
+        {
+          "state": "fall",
+          "pattern": "gamedata/graphics/hero/fantazy_warrior/fall_*.png",
+          "frame_duration": 0.125,
+          "loop": false
+        },
+        {
+          "state": "attack1",
+          "pattern": "gamedata/graphics/hero/fantazy_warrior/attack1_*.png",
+          "frame_duration": 0.125,
+          "loop": false
+        },
+        {
+          "state": "attack2",
+          "pattern": "gamedata/graphics/hero/fantazy_warrior/attack2_*.png",
+          "frame_duration": 0.125,
+          "loop": false
+        },
+        {
+          "state": "attack3",
+          "pattern": "gamedata/graphics/hero/fantazy_warrior/attack3_*.png",
+          "frame_duration": 0.125,
+          "loop": false
+        },
+        {
+          "state": "hit",
+          "pattern": "gamedata/graphics/hero/fantazy_warrior/takehit_*.png",
+          "frame_duration": 0.125,
+          "loop": false
+        },
+        {
+          "state": "death",
+          "pattern": "gamedata/graphics/hero/fantazy_warrior/death_*.png",
+          "frame_duration": 0.125,
+          "loop": false
+        },
+        {
+          "state": "travel",
+          "pattern": "gamedata/graphics/hero/fantazy_warrior/jump_*.png",
+          "frame_duration": 0.125,
+          "loop": false
+        }
+      ],
+      "hitboxes": [
+        {
+          "state": "attack1",
+          "frames": [
+            {
+              "start": 0.25,
+              "end": 0.625,
+              "box": {
+                "x": 30,
+                "y": 16,
+                "w": 62,
+                "h": 28
+              }
+            }
+          ]
+        },
+        {
+          "state": "attack2",
+          "frames": [
+            {
+              "start": 0.25,
+              "end": 0.625,
+              "box": {
+                "x": 28,
+                "y": 8,
+                "w": 76,
+                "h": 38
+              }
+            }
+          ]
+        },
+        {
+          "state": "attack3",
+          "frames": [
+            {
+              "start": 0.25,
+              "end": 0.75,
+              "box": {
+                "x": 20,
+                "y": 4,
+                "w": 92,
+                "h": 54
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "classes": [
+    {
+      "id": "knight",
+      "name": "Knight",
+      "description": "Frontline bruiser with shield dashes and wide melee control.",
+      "profile_id": "player_knight",
+      "skills": [
+        {
+          "id": "basic_slash",
+          "name": "Basic Slash",
+          "description": "Three-hit sword combo.",
+          "cooldown": 0.35
+        },
+        {
+          "id": "shield_dash",
+          "name": "Shield Dash",
+          "description": "Forward burst that knocks mobs back.",
+          "cooldown": 4
+        },
+        {
+          "id": "guard_counter",
+          "name": "Guard Counter",
+          "description": "Short defensive stance with a retaliating swing.",
+          "cooldown": 6
+        },
+        {
+          "id": "banner_slam",
+          "name": "Banner Slam",
+          "description": "Heavy area strike around the knight.",
+          "cooldown": 9
+        }
+      ]
+    },
+    {
+      "id": "archer_assassin",
+      "name": "Archer Assassin",
+      "description": "High mobility ranged hunter with burst shots and shadow steps.",
+      "profile_id": "player_archer",
+      "skills": [
+        {
+          "id": "quick_shot",
+          "name": "Quick Shot",
+          "description": "Fast ranged primary attack.",
+          "cooldown": 0.3
+        },
+        {
+          "id": "volley",
+          "name": "Volley",
+          "description": "Fires a wider burst of arrows.",
+          "cooldown": 4.5
+        },
+        {
+          "id": "shadow_step",
+          "name": "Shadow Step",
+          "description": "Short burst reposition through danger.",
+          "cooldown": 5
+        },
+        {
+          "id": "marked_burst",
+          "name": "Marked Burst",
+          "description": "Longer line attack with bonus PvP damage.",
+          "cooldown": 8
+        }
+      ]
+    },
+    {
+      "id": "forest_caster",
+      "name": "Forest Caster",
+      "description": "Control mage with roots, blinks and bloom explosions.",
+      "profile_id": "player_caster",
+      "skills": [
+        {
+          "id": "seed_bolt",
+          "name": "Seed Bolt",
+          "description": "Primary ranged seed projectile.",
+          "cooldown": 0.32
+        },
+        {
+          "id": "root_cage",
+          "name": "Root Cage",
+          "description": "Creates a trapping burst in front.",
+          "cooldown": 4.5
+        },
+        {
+          "id": "blink_leaf",
+          "name": "Blink Leaf",
+          "description": "Short controlled teleport.",
+          "cooldown": 5.5
+        },
+        {
+          "id": "wild_bloom",
+          "name": "Wild Bloom",
+          "description": "Large area bloom detonation.",
+          "cooldown": 9
+        }
+      ]
+    }
+  ],
+  "backgrounds": {
+    "cave": {
+      "id": "cave",
+      "base": "gamedata/PixelFantasy_Caves_1.0/background1.png",
+      "layers": [
+        {
+          "path": "gamedata/PixelFantasy_Caves_1.0/background2.png",
+          "parallax": 0.15,
+          "alpha": 1.0
+        },
+        {
+          "path": "gamedata/PixelFantasy_Caves_1.0/background3.png",
+          "parallax": 0.3,
+          "alpha": 0.85
+        }
+      ]
+    }
+  },
+  "tile_styles": {
+    "cave": {
+      "id": "cave",
+      "floor": "",
+      "platform": ""
+    }
+  },
+  "ui": {}
+}

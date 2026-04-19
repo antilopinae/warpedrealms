@@ -1,0 +1,57 @@
+{
+  "id": "connector_flat",
+  "width": 60,
+  "height": 200,
+  "tags": [
+    "ruins",
+    "crystal",
+    "forest",
+    "connector"
+  ],
+  "leftSocket": {
+    "SurfaceY": 155,
+    "Type": "platform"
+  },
+  "rightSocket": {
+    "SurfaceY": 155,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 155,
+      "W": 54,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 18,
+      "Y": 120,
+      "W": 24,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 5,
+      "Y": 85,
+      "W": 20,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 35,
+      "Y": 78,
+      "W": 20,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 15,
+      "Y": 30,
+      "W": 30,
+      "H": 2,
+      "Kind": "secret"
+    }
+  ],
+  "entities": []
+}

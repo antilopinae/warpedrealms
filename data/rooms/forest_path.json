@@ -1,0 +1,284 @@
+{
+  "id": "forest_path",
+  "name": "Forest Path",
+  "biome": "forest",
+  "background_id": "forest",
+  "tile_style_id": "forest",
+  "size": {
+    "x": 16800,
+    "y": 4800
+  },
+  "player_spawn": {
+    "x": 920,
+    "y": 4120
+  },
+  "solids": [
+    {
+      "x": 16,
+      "y": 4480,
+      "w": 16800,
+      "h": 320
+    },
+    {
+      "x": 480,
+      "y": 3960,
+      "w": 2300,
+      "h": 120
+    },
+    {
+      "x": 3480,
+      "y": 3560,
+      "w": 2100,
+      "h": 120
+    },
+    {
+      "x": 6460,
+      "y": 3240,
+      "w": 1960,
+      "h": 120
+    },
+    {
+      "x": 9720,
+      "y": 3560,
+      "w": 2020,
+      "h": 120
+    },
+    {
+      "x": 12700,
+      "y": 3140,
+      "w": 2380,
+      "h": 120
+    },
+    {
+      "x": 14640,
+      "y": 2260,
+      "w": 1120,
+      "h": 120
+    },
+    {
+      "x": 980,
+      "y": 2480,
+      "w": 980,
+      "h": 120
+    }
+  ],
+  "decorations": [
+    {
+      "id": "bridge-west",
+      "profile_id": "decor_bridge",
+      "position": {
+        "x": 480,
+        "y": 3904
+      },
+      "layer": "foreground",
+      "override": {}
+    },
+    {
+      "id": "bridge-east",
+      "profile_id": "decor_bridge",
+      "position": {
+        "x": 14620,
+        "y": 2204
+      },
+      "layer": "foreground",
+      "override": {}
+    },
+    {
+      "id": "portal-down",
+      "profile_id": "jump_portal",
+      "position": {
+        "x": 15340,
+        "y": 4020
+      },
+      "layer": "foreground",
+      "override": {}
+    },
+    {
+      "id": "window-down",
+      "profile_id": "decor_window",
+      "position": {
+        "x": 14780,
+        "y": 3520
+      },
+      "layer": "midground",
+      "override": {}
+    }
+  ],
+  "jump_links": [
+    {
+      "id": "link-down",
+      "target_tag": "down",
+      "label": "Leap Down",
+      "area": {
+        "x": 15160,
+        "y": 3920,
+        "w": 300,
+        "h": 220
+      },
+      "arrival": {
+        "x": 1100,
+        "y": 3620
+      },
+      "preview_rect": {
+        "x": 14360,
+        "y": 3360,
+        "w": 1120,
+        "h": 760
+      }
+    },
+    {
+      "id": "link-up",
+      "target_tag": "up",
+      "label": "Leap Up",
+      "area": {
+        "x": 860,
+        "y": 2360,
+        "w": 260,
+        "h": 220
+      },
+      "arrival": {
+        "x": 14540,
+        "y": 3900
+      },
+      "preview_rect": {
+        "x": 420,
+        "y": 1880,
+        "w": 980,
+        "h": 640
+      }
+    }
+  ],
+  "reveal_zones": [
+    {
+      "id": "peek-down",
+      "target_tag": "down",
+      "area": {
+        "x": 14100,
+        "y": 3200,
+        "w": 1600,
+        "h": 980
+      }
+    },
+    {
+      "id": "peek-up",
+      "target_tag": "up",
+      "area": {
+        "x": 300,
+        "y": 1820,
+        "w": 1500,
+        "h": 900
+      }
+    }
+  ],
+  "pvp_zones": [
+    {
+      "x": 6300,
+      "y": 2980,
+      "w": 2140,
+      "h": 760
+    }
+  ],
+  "exits": [
+    {
+      "id": "extract",
+      "label": "North Camp Gate",
+      "area": {
+        "x": 15620,
+        "y": 2100,
+        "w": 360,
+        "h": 420
+      }
+    }
+  ],
+  "mobs": [
+    {
+      "profile_id": "mob_rat",
+      "position": {
+        "x": 2120,
+        "y": 4240
+      }
+    },
+    {
+      "profile_id": "mob_rat",
+      "position": {
+        "x": 4180,
+        "y": 3320
+      }
+    },
+    {
+      "profile_id": "mob_bee",
+      "position": {
+        "x": 7520,
+        "y": 2860
+      }
+    },
+    {
+      "profile_id": "mob_frog",
+      "position": {
+        "x": 10840,
+        "y": 3340
+      }
+    },
+    {
+      "profile_id": "mob_spider",
+      "position": {
+        "x": 13280,
+        "y": 2900
+      }
+    }
+  ],
+  "mimics": [
+    {
+      "disguise_profile_id": "mimic_disguise",
+      "combat_profile_id": "mimic_trueform",
+      "position": {
+        "x": 5700,
+        "y": 4240
+      }
+    },
+    {
+      "disguise_profile_id": "mimic_disguise",
+      "combat_profile_id": "mimic_trueform",
+      "position": {
+        "x": 11860,
+        "y": 4240
+      }
+    }
+  ],
+  "boss": {
+    "profile_id": "boss_root_colossus",
+    "position": {
+      "x": 8200,
+      "y": 4140
+    }
+  },
+  "loot": [
+    {
+      "profile_id": "loot_coin",
+      "kind": "coin",
+      "position": {
+        "x": 3720,
+        "y": 3440
+      },
+      "value": 4
+    },
+    {
+      "profile_id": "loot_gem",
+      "kind": "gem",
+      "position": {
+        "x": 10600,
+        "y": 3440
+      },
+      "value": 8
+    },
+    {
+      "profile_id": "loot_relic",
+      "kind": "relic",
+      "position": {
+        "x": 14840,
+        "y": 2140
+      },
+      "value": 15
+    }
+  ]
+}

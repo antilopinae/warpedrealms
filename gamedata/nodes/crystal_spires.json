@@ -1,0 +1,128 @@
+{
+  "id": "crystal_spires",
+  "width": 120,
+  "height": 200,
+  "tags": [
+    "crystal"
+  ],
+  "leftSocket": {
+    "SurfaceY": 155,
+    "Type": "platform"
+  },
+  "rightSocket": {
+    "SurfaceY": 158,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 155,
+      "W": 22,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 95,
+      "Y": 158,
+      "W": 22,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 50,
+      "Y": 140,
+      "W": 20,
+      "H": 2,
+      "Kind": "main"
+    },
+    {
+      "X": 15,
+      "Y": 138,
+      "W": 8,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 26,
+      "Y": 125,
+      "W": 8,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 37,
+      "Y": 112,
+      "W": 8,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 48,
+      "Y": 99,
+      "W": 8,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 75,
+      "Y": 142,
+      "W": 8,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 85,
+      "Y": 128,
+      "W": 8,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 95,
+      "Y": 115,
+      "W": 8,
+      "H": 1,
+      "Kind": "step"
+    },
+    {
+      "X": 42,
+      "Y": 85,
+      "W": 36,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 20,
+      "Y": 55,
+      "W": 30,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 75,
+      "Y": 50,
+      "W": 30,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 40,
+      "Y": 15,
+      "W": 40,
+      "H": 2,
+      "Kind": "secret"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Rat",
+      "X": 50,
+      "Y": 137
+    },
+    {
+      "Type": "Rat",
+      "X": 60,
+      "Y": 47
+    }
+  ]
+}

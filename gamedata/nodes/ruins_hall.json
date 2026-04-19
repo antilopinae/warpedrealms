@@ -1,0 +1,119 @@
+{
+  "id": "ruins_hall",
+  "width": 150,
+  "height": 200,
+  "tags": [
+    "ruins"
+  ],
+  "leftSocket": {
+    "SurfaceY": 155,
+    "Type": "platform"
+  },
+  "rightSocket": {
+    "SurfaceY": 150,
+    "Type": "platform"
+  },
+  "islands": [
+    {
+      "X": 3,
+      "Y": 155,
+      "W": 55,
+      "H": 4,
+      "Kind": "main"
+    },
+    {
+      "X": 95,
+      "Y": 150,
+      "W": 52,
+      "H": 4,
+      "Kind": "main"
+    },
+    {
+      "X": 58,
+      "Y": 165,
+      "W": 35,
+      "H": 3,
+      "Kind": "main"
+    },
+    {
+      "X": 5,
+      "Y": 120,
+      "W": 40,
+      "H": 3,
+      "Kind": "branch"
+    },
+    {
+      "X": 108,
+      "Y": 115,
+      "W": 40,
+      "H": 3,
+      "Kind": "branch"
+    },
+    {
+      "X": 60,
+      "Y": 132,
+      "W": 35,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 35,
+      "Y": 88,
+      "W": 80,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 10,
+      "Y": 62,
+      "W": 35,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 110,
+      "Y": 58,
+      "W": 35,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 50,
+      "Y": 15,
+      "W": 55,
+      "H": 2,
+      "Kind": "secret"
+    },
+    {
+      "X": 25,
+      "Y": 145,
+      "W": 12,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 120,
+      "Y": 135,
+      "W": 12,
+      "H": 2,
+      "Kind": "step"
+    }
+  ],
+  "entities": [
+    {
+      "Type": "Rat",
+      "X": 25,
+      "Y": 152
+    },
+    {
+      "Type": "Rat",
+      "X": 120,
+      "Y": 147
+    },
+    {
+      "Type": "Rat",
+      "X": 65,
+      "Y": 162
+    }
+  ]
+}

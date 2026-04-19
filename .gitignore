@@ -1,0 +1,10 @@
+cmd/client/client
+cmd/server/server
+client
+server
+*.wasm
+trash-assets/
+.idea/
+.gocache/
+.DS_Store
+

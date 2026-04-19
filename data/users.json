@@ -1,0 +1,35 @@
+{
+  "next_id": 7,
+  "users": [
+    {
+      "id": "user-0005",
+      "email": "player@example.com22",
+      "password_hash": "$2a$10$lASAINzVEB8n0d.35yD7c.ZSGclpWrO9S2T2p1lP/aoOOaZPemhKm"
+    },
+    {
+      "id": "user-0001",
+      "email": "codex-smoke@example.com",
+      "password_hash": "$2a$10$AnbKcBpbQxfoWoFqvn4D5O2HuaJf/81t5RQxbw5g725IVdpRI4nX2"
+    },
+    {
+      "id": "user-0002",
+      "email": "raid-smoke@example.com",
+      "password_hash": "$2a$10$X0t8pX4XY8aHNwLIajA.X.3nzEX5yS6aVq9958yaxWUhmBd55MAk2"
+    },
+    {
+      "id": "user-0003",
+      "email": "player@example.com",
+      "password_hash": "$2a$10$5G1jjBNAHPuqcleBLLcqp.eyq.GNJlSFu7ipuG9lBiW7XA1oOfw6W"
+    },
+    {
+      "id": "user-0004",
+      "email": "player2@example.com",
+      "password_hash": "$2a$10$4kd4kwfULg1IRad2fASCs.GeeSAXERj6o5iGMEMQQkBWrr/eo1yOy"
+    },
+    {
+      "id": "user-0006",
+      "email": "player@example.com2",
+      "password_hash": "$2a$10$cUCqYsNO2a4aZL7V7/aku.px89jAANfDizfzs5BNFMgIpVMWgLF2S"
+    }
+  ]
+}
