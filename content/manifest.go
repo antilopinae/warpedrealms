@@ -61,25 +61,24 @@ type CompositeProfile struct {
 }
 
 type AssetProfile struct {
-	ID             string             `json:"id"`
-	Name           string             `json:"name"`
-	Kind           shared.EntityKind  `json:"kind"`
-	Faction        shared.Faction     `json:"faction"`
-	FamilyID       string             `json:"family_id"`
-	ClassID        shared.PlayerClass `json:"class_id,omitempty"`
-	Scale          float64            `json:"scale"`
-	SpriteSize     shared.Vec2        `json:"sprite_size"`
-	SpriteOffset   shared.Vec2        `json:"sprite_offset"`
-	Collider       shared.Rect        `json:"collider"`
-	Hurtbox        shared.Rect        `json:"hurtbox"`
-	InteractionBox shared.Rect        `json:"interaction_box"`
-	SortAnchor     shared.Vec2        `json:"sort_anchor"`
-	MaxHP          int                `json:"max_hp"`
-	Moveset        string             `json:"moveset,omitempty"`
-	Animations     []AnimationClip    `json:"animations,omitempty"`
-	Hitboxes       []AnimationHitbox  `json:"hitboxes,omitempty"`
-	Layers         []CompositePart    `json:"layers,omitempty"`
-	Composite      *CompositeProfile  `json:"composite,omitempty"`
+	ID             string            `json:"id"`
+	Name           string            `json:"name"`
+	Kind           shared.EntityKind `json:"kind"`
+	Faction        shared.Faction    `json:"faction"`
+	FamilyID       string            `json:"family_id"`
+	Scale          float64           `json:"scale"`
+	SpriteSize     shared.Vec2       `json:"sprite_size"`
+	SpriteOffset   shared.Vec2       `json:"sprite_offset"`
+	Collider       shared.Rect       `json:"collider"`
+	Hurtbox        shared.Rect       `json:"hurtbox"`
+	InteractionBox shared.Rect       `json:"interaction_box"`
+	SortAnchor     shared.Vec2       `json:"sort_anchor"`
+	MaxHP          int               `json:"max_hp"`
+	Moveset        string            `json:"moveset,omitempty"`
+	Animations     []AnimationClip   `json:"animations,omitempty"`
+	Hitboxes       []AnimationHitbox `json:"hitboxes,omitempty"`
+	Layers         []CompositePart   `json:"layers,omitempty"`
+	Composite      *CompositeProfile `json:"composite,omitempty"`
 }
 
 type AbilityDefinition struct {
@@ -90,7 +89,7 @@ type AbilityDefinition struct {
 }
 
 type ClassDefinition struct {
-	ID          shared.PlayerClass  `json:"id"`
+	ID          string              `json:"id"`
 	Name        string              `json:"name"`
 	Description string              `json:"description"`
 	ProfileID   string              `json:"profile_id"`
@@ -157,9 +156,6 @@ func LoadManifest(path string) (*Manifest, error) {
 		return nil, fmt.Errorf("decode manifest: %w", err)
 	}
 	manifest.Normalize()
-	if err := manifest.Validate(); err != nil {
-		return nil, err
-	}
 	return &manifest, nil
 }
 
@@ -168,9 +164,6 @@ func SaveManifest(path string, manifest *Manifest) error {
 		return fmt.Errorf("manifest is nil")
 	}
 	manifest.Normalize()
-	if err := manifest.Validate(); err != nil {
-		return err
-	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -201,11 +194,6 @@ func (m *Manifest) Normalize() {
 		}
 		m.Profiles[id] = profile
 	}
-	for index := range m.Classes {
-		if m.Classes[index].ID == "" {
-			m.Classes[index].ID = shared.PlayerClass(strings.ToLower(strings.ReplaceAll(m.Classes[index].Name, " ", "_")))
-		}
-	}
 	for id, background := range m.Backgrounds {
 		background.ID = id
 		m.Backgrounds[id] = background
@@ -214,24 +202,6 @@ func (m *Manifest) Normalize() {
 		style.ID = id
 		m.TileStyles[id] = style
 	}
-}
-
-func (m *Manifest) Validate() error {
-	if len(m.Classes) < 3 {
-		return fmt.Errorf("manifest requires at least 3 classes")
-	}
-	for _, class := range m.Classes {
-		if _, ok := m.Profiles[class.ProfileID]; !ok {
-			return fmt.Errorf("class %s references missing profile %s", class.ID, class.ProfileID)
-		}
-		if len(class.Skills) < 3 {
-			return fmt.Errorf("class %s requires 3 skills", class.ID)
-		}
-	}
-	if len(m.Profiles) == 0 {
-		return fmt.Errorf("manifest requires profiles")
-	}
-	return nil
 }
 
 func (b *Bundle) Validate() error {
@@ -251,15 +221,6 @@ func (m *Manifest) SortedProfileIDs() []string {
 	}
 	sort.Strings(ids)
 	return ids
-}
-
-func (m *Manifest) Class(id shared.PlayerClass) (ClassDefinition, bool) {
-	for _, class := range m.Classes {
-		if class.ID == id {
-			return class, true
-		}
-	}
-	return ClassDefinition{}, false
 }
 
 func (m *Manifest) Profile(id string) (AssetProfile, bool) {
@@ -297,7 +258,6 @@ func (profile AssetProfile) DefaultState() shared.EntityState {
 		Faction:        profile.Faction,
 		ProfileID:      profile.ID,
 		FamilyID:       profile.FamilyID,
-		ClassID:        profile.ClassID,
 		MaxHP:          profile.MaxHP,
 		HP:             profile.MaxHP,
 		Facing:         1,

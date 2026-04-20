@@ -112,8 +112,6 @@ func AnimationDuration(state EntityState, animation AnimationState) float64 {
 		switch state.Kind {
 		case EntityKindBoss:
 			return 1.2
-		case EntityKindMimic:
-			return 0.85
 		default:
 			return 0.72
 		}
@@ -123,8 +121,8 @@ func AnimationDuration(state EntityState, animation AnimationState) float64 {
 }
 
 func NextAttackAnimation(state EntityState, combo int) AnimationState {
-	switch state.ClassID {
-	case PlayerClassKnight:
+	switch state.Kind {
+	case EntityKindPlayer:
 		switch combo % 3 {
 		case 1:
 			return AnimationAttack2
@@ -133,18 +131,8 @@ func NextAttackAnimation(state EntityState, combo int) AnimationState {
 		default:
 			return AnimationAttack1
 		}
-	case PlayerClassArcherAssassin:
-		if combo%2 == 1 {
-			return AnimationAttack2
-		}
-		return AnimationAttack1
-	case PlayerClassForestCaster:
-		if combo%2 == 1 {
-			return AnimationAttack3
-		}
-		return AnimationAttack1
 	default:
-		if state.Kind == EntityKindRat || state.Kind == EntityKindMob || state.Kind == EntityKindMimic || state.Kind == EntityKindBoss {
+		if state.Kind == EntityKindMob || state.Kind == EntityKindBoss {
 			return AnimationAttack1
 		}
 		switch combo % 3 {

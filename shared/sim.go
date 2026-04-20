@@ -12,38 +12,15 @@ type MovementConfig struct {
 	MaxFallSpeed float64
 }
 
-func PlayerMovementConfig(classID PlayerClass) MovementConfig {
-	switch classID {
-	case PlayerClassArcherAssassin:
-		return MovementConfig{
-			MoveSpeed:    315,
-			GroundAccel:  2600,
-			AirAccel:     1800,
-			Friction:     2700,
-			Gravity:      2080,
-			JumpSpeed:    760,
-			MaxFallSpeed: 1260,
-		}
-	case PlayerClassForestCaster:
-		return MovementConfig{
-			MoveSpeed:    250,
-			GroundAccel:  2000,
-			AirAccel:     1450,
-			Friction:     2200,
-			Gravity:      1980,
-			JumpSpeed:    710,
-			MaxFallSpeed: 1160,
-		}
-	default:
-		return MovementConfig{
-			MoveSpeed:    192,
-			GroundAccel:  1640,
-			AirAccel:     1120,
-			Friction:     1745,
-			Gravity:      2050,
-			JumpSpeed:    735,
-			MaxFallSpeed: 1220,
-		}
+func PlayerMovementConfig() MovementConfig {
+	return MovementConfig{
+		MoveSpeed:    192,
+		GroundAccel:  1640,
+		AirAccel:     1120,
+		Friction:     1745,
+		Gravity:      2050,
+		JumpSpeed:    735,
+		MaxFallSpeed: 1220,
 	}
 }
 
@@ -73,7 +50,7 @@ func EnemyMovementConfig(kind EntityKind) MovementConfig {
 }
 
 func SimulatePlayer(state *EntityState, input InputCommand, colliders []Rect) {
-	simulateEntity(state, input, colliders, PlayerMovementConfig(state.ClassID))
+	simulateEntity(state, input, colliders, PlayerMovementConfig())
 }
 
 func SimulateEnemy(state *EntityState, moveX float64, jump bool, colliders []Rect) {

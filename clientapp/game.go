@@ -91,10 +91,12 @@ func NewGame(baseURL string, manifestPath string, roomsDir string) (*Game, error
 	if err != nil {
 		return nil, err
 	}
+
 	assets, err := LoadAssets(bundle.Manifest)
 	if err != nil {
 		return nil, err
 	}
+
 	settingsPath := filepath.Join("data", "client_settings.json")
 	controls, err := LoadControls(settingsPath)
 	settingsStatus := "Enter: rebinding  Backspace: reset action  R: reset all  Esc: back"
@@ -115,11 +117,11 @@ func NewGame(baseURL string, manifestPath string, roomsDir string) (*Game, error
 		authMode:       "sign-up",
 		email:          "player@example.com",
 		password:       "1234",
-		status:         "F2 переключает sign-up/sign-in. Tab меняет поле. Enter отправляет.",
+		status:         "F2 to sign-up/sign-in. Tab to switch. Enter to continue.",
 		settingsPath:   settingsPath,
 		settingsStatus: settingsStatus,
 		interpolators:  make(map[string]*Interpolator),
-		worldScale:     float64(shared.ScreenHeight) / 480.0, // fill screen vertically for 480px-tall TMX rooms
+		worldScale:     float64(shared.ScreenHeight) / 480.0,
 		startedAt:      time.Now(),
 	}
 	game.updateViewOffset()
@@ -465,9 +467,8 @@ func (g *Game) connectToRaid(raidID string) {
 func (g *Game) connectToRaidAsync(token string, raidID string) {
 	g.resetRaidState()
 	g.currentRaidID = raidID
-	classID := g.selectedClassID()
 	go func() {
-		if err := g.network.Connect(token, raidID, classID); err != nil {
+		if err := g.network.Connect(token, raidID); err != nil {
 			g.post(func() {
 				g.screen = screenLobby
 				g.status = err.Error()
@@ -582,8 +583,6 @@ func (g *Game) drawLobby(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, button.label, int(button.rect.X)+18, int(button.rect.Y)+12)
 	}
 
-	g.drawClassCards(screen)
-
 	y := 360
 	if len(g.raids) == 0 {
 		ebitenutil.DebugPrintAt(screen, "Нет доступных рейдов. Нажми N, чтобы создать новый.", 88, y)
@@ -604,46 +603,6 @@ func (g *Game) drawLobby(screen *ebiten.Image) {
 	}
 
 	ebitenutil.DebugPrintAt(screen, g.status, 88, 638)
-}
-
-func (g *Game) drawClassCards(screen *ebiten.Image) {
-	// MLP: only show the active Knight class card.
-	knightClass, ok := g.bundle.Manifest.Class(shared.PlayerClassKnight)
-	if !ok && len(g.bundle.Manifest.Classes) > 0 {
-		knightClass = g.bundle.Manifest.Classes[0]
-		ok = true
-	}
-	if !ok {
-		return
-	}
-	x := 88
-	cardWidth := 354.0
-	fill := color.RGBA{34, 52, 76, 235}
-	stroke := color.RGBA{132, 206, 255, 255}
-	vector.DrawFilledRect(screen, float32(x), 176, float32(cardWidth), 156, fill, false)
-	vector.StrokeRect(screen, float32(x), 176, float32(cardWidth), 156, 1, stroke, false)
-	ebitenutil.DebugPrintAt(screen, knightClass.Name+" (active)", x+18, 192)
-	ebitenutil.DebugPrintAt(screen, knightClass.Description, x+18, 212)
-	profile, _ := g.bundle.Manifest.Profile(knightClass.ProfileID)
-	idle := g.assets.IdleFrame(knightClass.ProfileID)
-	if idle != nil {
-		op := &ebiten.DrawImageOptions{}
-		scale := 72.0 / float64(idle.Bounds().Dy())
-		op.GeoM.Scale(scale, scale)
-		op.GeoM.Translate(float64(x+20), 232)
-		screen.DrawImage(idle, op)
-	}
-	if layers := g.assets.Layers[knightClass.ProfileID]; len(layers) > 0 && layers[0].Image != nil {
-		op := &ebiten.DrawImageOptions{}
-		scale := 44.0 / float64(layers[0].Image.Bounds().Dy())
-		op.GeoM.Scale(scale, scale)
-		op.GeoM.Translate(float64(x+70), 252)
-		screen.DrawImage(layers[0].Image, op)
-	}
-	for idx, skill := range knightClass.Skills[1:] {
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d. %s (%.1fs)", idx+1, skill.Name, skill.Cooldown), x+118, 236+idx*22)
-	}
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("HP %d  Profile %s", profile.MaxHP, profile.ID), x+118, 304)
 }
 
 func (g *Game) drawGame(screen *ebiten.Image) {
@@ -762,7 +721,7 @@ func (g *Game) drawPhysicsDebug(screen *ebiten.Image, activeRoomID string, entit
 		bw := bounds.W * g.worldScale
 		bh := bounds.H * g.worldScale
 
-		clr := color.RGBA{255, 60, 60, 220}  // red = airborne
+		clr := color.RGBA{255, 60, 60, 220} // red = airborne
 		fill := color.RGBA{255, 60, 60, 40}
 		if entity.Grounded {
 			clr = color.RGBA{60, 255, 80, 220} // green = grounded
@@ -852,7 +811,6 @@ func (g *Game) drawRaidHUD(screen *ebiten.Image, entityCount int) {
 	exitTag := ""
 	hp := 0
 	maxHP := 1
-	classID := g.selectedClassID()
 	roomID := g.localPlayer.RoomID
 	cooldowns := []shared.AbilityCooldown{}
 	for _, player := range g.currentRaid.Players {
@@ -862,7 +820,6 @@ func (g *Game) drawRaidHUD(screen *ebiten.Image, entityCount int) {
 			exitTag = player.AssignedExitTag
 			hp = player.HP
 			maxHP = player.MaxHP
-			classID = player.ClassID
 			roomID = player.CurrentRoomID
 			cooldowns = player.Cooldowns
 			break
@@ -871,7 +828,7 @@ func (g *Game) drawRaidHUD(screen *ebiten.Image, entityCount int) {
 
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Raid: %s (%s)", g.currentRaid.Name, g.currentRaid.RaidID), 28, 28)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Phase: %s  Time: %.0fs / %.0fs  Seed: %d", g.currentRaid.Phase, g.currentRaid.TimeRemaining, g.currentRaid.Duration, g.currentRaid.Seed), 28, 46)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Class: %s  Room: %s  Status: %s", classID, roomID, localStatus), 28, 64)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Room: %s  Status: %s", roomID, localStatus), 28, 64)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("HP: %d/%d  Loot: %d  Exit: %s", hp, maxHP, loot, exitTag), 28, 82)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Ping: %.0f ms  Pending: %d  Ack: %d  Entities: %d", g.pingMS, len(g.pendingInput), g.lastAckSeq, entityCount), 28, 100)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Attack %s  Skills %s/%s/%s  Interact %s  JumpLink %s", BindingLabel(g.controls, ActionAttack), BindingLabel(g.controls, ActionSkill1), BindingLabel(g.controls, ActionSkill2), BindingLabel(g.controls, ActionSkill3), BindingLabel(g.controls, ActionInteract), BindingLabel(g.controls, ActionUseJumpLink)), 28, 118)
@@ -923,7 +880,7 @@ func (g *Game) drawInteractionPrompt(screen *ebiten.Image, entities []shared.Ent
 	}
 	if prompt == "" {
 		for _, entity := range entities {
-			if entity.ID == g.localID || entity.RoomID != g.localPlayer.RoomID || entity.Kind != shared.EntityKindProp {
+			if entity.ID == g.localID || entity.RoomID != g.localPlayer.RoomID {
 				continue
 			}
 			if !shared.InteractionBounds(entity).Inflate(18, 18).ContainsPoint(localCenter) {
@@ -1057,7 +1014,7 @@ func (g *Game) drawEntityLabel(screen *ebiten.Image, entity shared.EntityState, 
 		return
 	}
 	label := entity.Name
-	if entity.HP > 0 && entity.Kind != shared.EntityKindProp {
+	if entity.HP > 0 {
 		label = fmt.Sprintf("%s [%d]", entity.Name, entity.HP)
 	}
 	ebitenutil.DebugPrintAt(screen, label, int(screenPos.X), int(screenPos.Y)-14)
@@ -1069,29 +1026,12 @@ func (g *Game) drawEntityEffects(screen *ebiten.Image, entity shared.EntityState
 
 	switch entity.Animation {
 	case shared.AnimationAttack1, shared.AnimationAttack2, shared.AnimationAttack3:
-		switch entity.ClassID {
-		case shared.PlayerClassArcherAssassin:
-			g.drawEffectImage(screen, g.assets.FX.MagicBlue, center.X+entity.Facing*48*g.worldScale, center.Y-26*g.worldScale, 0.75*g.worldScale, elapsed, entity.Facing, 0.9)
-		case shared.PlayerClassForestCaster:
-			g.drawEffectImage(screen, g.assets.FX.MagicGreen, center.X+entity.Facing*38*g.worldScale, center.Y-38*g.worldScale, 0.82*g.worldScale, elapsed, entity.Facing, 0.9)
-			g.drawEffectImage(screen, g.assets.FX.Lightning, center.X+entity.Facing*54*g.worldScale, center.Y-42*g.worldScale, 0.64*g.worldScale, elapsed, entity.Facing, 0.55)
-		default:
-			if frame := g.assets.FX.Slash.FrameAt(elapsed); frame != nil {
-				g.drawEffectFrame(screen, frame, center.X+entity.Facing*52*g.worldScale, center.Y-36*g.worldScale, 0.3*g.worldScale, elapsed, entity.Facing, 0.9)
-			}
+		if frame := g.assets.FX.Slash.FrameAt(elapsed); frame != nil {
+			g.drawEffectFrame(screen, frame, center.X+entity.Facing*52*g.worldScale, center.Y-36*g.worldScale, 0.3*g.worldScale, elapsed, entity.Facing, 0.9)
 		}
 	case shared.AnimationSkill1, shared.AnimationSkill2, shared.AnimationSkill3:
-		switch entity.ClassID {
-		case shared.PlayerClassKnight:
-			if frame := g.assets.FX.Slash.FrameAt(elapsed); frame != nil {
-				g.drawEffectFrame(screen, frame, center.X+entity.Facing*44*g.worldScale, center.Y-40*g.worldScale, 0.36*g.worldScale, elapsed, entity.Facing, 0.95)
-			}
-		case shared.PlayerClassArcherAssassin:
-			g.drawEffectImage(screen, g.assets.FX.MagicBlue, center.X+entity.Facing*68*g.worldScale, center.Y-44*g.worldScale, 0.95*g.worldScale, elapsed, entity.Facing, 0.85)
-			g.drawEffectImage(screen, g.assets.FX.Lightning, center.X+entity.Facing*74*g.worldScale, center.Y-52*g.worldScale, 0.72*g.worldScale, elapsed, entity.Facing, 0.55)
-		case shared.PlayerClassForestCaster:
-			g.drawEffectImage(screen, g.assets.FX.MagicGreen, center.X+entity.Facing*42*g.worldScale, center.Y-58*g.worldScale, 1.08*g.worldScale, elapsed, entity.Facing, 0.88)
-			g.drawEffectImage(screen, g.assets.FX.Lightning, center.X+entity.Facing*58*g.worldScale, center.Y-74*g.worldScale, 0.88*g.worldScale, elapsed, entity.Facing, 0.7)
+		if frame := g.assets.FX.Slash.FrameAt(elapsed); frame != nil {
+			g.drawEffectFrame(screen, frame, center.X+entity.Facing*44*g.worldScale, center.Y-40*g.worldScale, 0.36*g.worldScale, elapsed, entity.Facing, 0.95)
 		}
 	}
 
@@ -1386,10 +1326,6 @@ func (g *Game) post(event func()) {
 	}
 }
 
-func (g *Game) selectedClassID() shared.PlayerClass {
-	return shared.PlayerClassKnight
-}
-
 func deleteLastRune(value string) string {
 	if value == "" {
 		return value
@@ -1414,7 +1350,6 @@ func clamp(value float64, minValue float64, maxValue float64) float64 {
 	}
 	return value
 }
-
 
 // riftDebugColor returns a debug outline colour for a rift based on kind and open state.
 func riftDebugColor(kind shared.RiftKind, isOpen bool) color.RGBA {

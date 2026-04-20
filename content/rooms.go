@@ -43,10 +43,10 @@ type BossSpawn struct {
 }
 
 type LootSpawn struct {
-	ProfileID string          `json:"profile_id"`
-	Kind      shared.LootKind `json:"kind"`
-	Position  shared.Vec2     `json:"position"`
-	Value     int             `json:"value"`
+	ProfileID string      `json:"profile_id"`
+	Kind      string      `json:"kind"`
+	Position  shared.Vec2 `json:"position"`
+	Value     int         `json:"value"`
 }
 
 type JumpLinkTemplate struct {

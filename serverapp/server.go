@@ -162,13 +162,9 @@ func (s *Server) handleWebSocket(writer http.ResponseWriter, request *http.Reque
 	peer := &Peer{
 		playerID:   session.UserID,
 		playerName: displayName(session.Email),
-		classID:    shared.PlayerClass(request.URL.Query().Get("class")),
 		conn:       conn,
 		send:       make(chan shared.ServerMessage, 8),
 		room:       room,
-	}
-	if peer.classID == "" {
-		peer.classID = shared.PlayerClassKnight
 	}
 
 	if err := room.Join(peer); err != nil {

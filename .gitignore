@@ -7,3 +7,4 @@ trash-assets/
 .DS_Store
 gamedata/sessions/*
 dist/
+vendor/

@@ -16,7 +16,7 @@
 
 package metal
 
-// #cgo CFLAGS: -x objective-c -Wno-deprecated-declarations
+// #cgo CFLAGS: -x objective-c
 //
 // #include <Foundation/Foundation.h>
 // #include <CoreVideo/CVDisplayLink.h>

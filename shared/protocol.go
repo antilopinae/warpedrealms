@@ -48,16 +48,15 @@ type PongMessage struct {
 }
 
 type WelcomeMessage struct {
-	PlayerID              string      `json:"player_id"`
-	PlayerName            string      `json:"player_name"`
-	ClassID               PlayerClass `json:"class_id"`
-	RaidID                string      `json:"raid_id"`
-	RaidName              string      `json:"raid_name"`
-	ContentVersion        string      `json:"content_version"`
-	ServerTime            float64     `json:"server_time"`
-	TickRate              float64     `json:"tick_rate"`
-	SnapshotRate          float64     `json:"snapshot_rate"`
-	InterpolationBackTime float64     `json:"interpolation_back_time"`
+	PlayerID              string  `json:"player_id"`
+	PlayerName            string  `json:"player_name"`
+	RaidID                string  `json:"raid_id"`
+	RaidName              string  `json:"raid_name"`
+	ContentVersion        string  `json:"content_version"`
+	ServerTime            float64 `json:"server_time"`
+	TickRate              float64 `json:"tick_rate"`
+	SnapshotRate          float64 `json:"snapshot_rate"`
+	InterpolationBackTime float64 `json:"interpolation_back_time"`
 }
 
 type SnapshotMessage struct {

@@ -20,21 +20,11 @@ type GeneratedNPC struct {
 	Position          shared.Vec2
 }
 
-type GeneratedLoot struct {
-	ID        string
-	ProfileID string
-	Kind      shared.LootKind
-	RoomID    string
-	Position  shared.Vec2
-	Value     int
-}
-
 type GeneratedRaid struct {
 	Layout       shared.RaidLayoutState
 	PlayerSpawn  shared.Vec2   // primary spawn (index 0), kept for back-compat
 	PlayerSpawns []shared.Vec2 // one entry per player slot; cycles on overflow
 	NPCs         []GeneratedNPC
-	Loot         []GeneratedLoot
 }
 
 func (b *Bundle) GenerateRaid(seed int64) (*GeneratedRaid, error) {
@@ -56,11 +46,9 @@ func (b *Bundle) GenerateRaid(seed int64) (*GeneratedRaid, error) {
 	}
 	builds := make([]roomBuild, 0, roomCount)
 	npcs := make([]GeneratedNPC, 0, roomCount*8)
-	loot := make([]GeneratedLoot, 0, roomCount*6)
 	templateBag := make([]RoomTemplate, 0, len(b.RoomTemplates))
 
 	driftX := 0.0
-	lootIndex := 0
 	npcIndex := 0
 
 	for index := 0; index < roomCount; index++ {
@@ -196,29 +184,6 @@ func (b *Bundle) GenerateRaid(seed int64) (*GeneratedRaid, error) {
 			Position:  origin.Add(template.Boss.Position),
 		})
 
-		for _, drop := range template.Loot {
-			lootIndex++
-			loot = append(loot, GeneratedLoot{
-				ID:        fmt.Sprintf("loot-%03d", lootIndex),
-				ProfileID: drop.ProfileID,
-				Kind:      drop.Kind,
-				RoomID:    roomID,
-				Position:  origin.Add(drop.Position),
-				Value:     drop.Value,
-			})
-		}
-		for _, drop := range proceduralLootSpawns(room, rng) {
-			lootIndex++
-			loot = append(loot, GeneratedLoot{
-				ID:        fmt.Sprintf("loot-%03d", lootIndex),
-				ProfileID: drop.ProfileID,
-				Kind:      drop.Kind,
-				RoomID:    roomID,
-				Position:  drop.Position,
-				Value:     drop.Value,
-			})
-		}
-
 		builds = append(builds, roomBuild{
 			template: template,
 			state:    room,
@@ -288,7 +253,6 @@ func (b *Bundle) GenerateRaid(seed int64) (*GeneratedRaid, error) {
 		return generated.Layout.Rooms[i].Index < generated.Layout.Rooms[j].Index
 	})
 	generated.NPCs = npcs
-	generated.Loot = loot
 	generated.PlayerSpawn = shared.Vec2{
 		X: builds[0].state.Bounds.X + builds[0].template.PlayerSpawn.X,
 		Y: builds[0].state.Bounds.Y + builds[0].template.PlayerSpawn.Y,
@@ -606,34 +570,6 @@ func proceduralMimics(room shared.RoomState, rng *rand.Rand) []GeneratedNPC {
 			Position: shared.Vec2{
 				X: room.Bounds.X + room.Bounds.W*0.2 + float64(index)*room.Bounds.W*0.28 + float64(rng.Intn(280)-140),
 				Y: room.Bounds.Y + room.Bounds.H - 560 - float64(rng.Intn(160)),
-			},
-		})
-	}
-	return extra
-}
-
-func proceduralLootSpawns(room shared.RoomState, rng *rand.Rand) []GeneratedLoot {
-	count := 3 + rng.Intn(4)
-	extra := make([]GeneratedLoot, 0, count)
-	profiles := []struct {
-		ID    string
-		Kind  shared.LootKind
-		Value int
-	}{
-		{ID: "loot_coin", Kind: shared.LootKindCoin, Value: 1 + rng.Intn(2)},
-		{ID: "loot_gem", Kind: shared.LootKindGem, Value: 2 + rng.Intn(3)},
-		{ID: "loot_relic", Kind: shared.LootKindRelic, Value: 4 + rng.Intn(4)},
-	}
-	for index := 0; index < count; index++ {
-		selection := profiles[rng.Intn(len(profiles))]
-		extra = append(extra, GeneratedLoot{
-			ProfileID: selection.ID,
-			Kind:      selection.Kind,
-			RoomID:    room.ID,
-			Value:     selection.Value,
-			Position: shared.Vec2{
-				X: room.Bounds.X + 1200 + float64(index)*((room.Bounds.W-2600)/float64(count+1)) + float64(rng.Intn(340)-170),
-				Y: room.Bounds.Y + room.Bounds.H - 1180 - float64(rng.Intn(1900)),
 			},
 		})
 	}

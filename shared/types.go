@@ -3,7 +3,6 @@ package shared
 import "math"
 
 const (
-	DefaultMapPath             = "gamedata/map/map_1.tmx"
 	DefaultAssetManifestPath   = "data/content/assets_manifest.json"
 	DefaultRoomsDir            = "data/rooms"
 	SimulationTickRate         = 60.0
@@ -117,13 +116,10 @@ func (r Rect) Inflate(x float64, y float64) Rect {
 type EntityKind string
 
 const (
-	EntityKindPlayer     EntityKind = "player"
-	EntityKindRat        EntityKind = "rat"
-	EntityKindMob        EntityKind = "mob"
-	EntityKindMimic      EntityKind = "mimic"
-	EntityKindBoss       EntityKind = "boss"
-	EntityKindProp       EntityKind = "prop"
-	EntityKindProjectile EntityKind = "projectile"
+	EntityKindPlayer EntityKind = "player"
+	EntityKindMob    EntityKind = "mob"
+	EntityKindBoss   EntityKind = "boss"
+	EntityKindMimic  EntityKind = "mimic"
 )
 
 type Faction string
@@ -132,26 +128,6 @@ const (
 	FactionPlayers  Faction = "players"
 	FactionMonsters Faction = "monsters"
 	FactionNeutral  Faction = "neutral"
-)
-
-type PlayerClass string
-
-const (
-	PlayerClassKnight         PlayerClass = "knight"
-	PlayerClassArcherAssassin PlayerClass = "archer_assassin"
-	PlayerClassForestCaster   PlayerClass = "forest_caster"
-)
-
-type LootKind string
-
-const (
-	LootKindScrap   LootKind = "scrap"
-	LootKindCrystal LootKind = "crystal"
-	LootKindTrophy  LootKind = "trophy"
-	LootKindBag     LootKind = "bag"
-	LootKindCoin    LootKind = "coin"
-	LootKindGem     LootKind = "gem"
-	LootKindRelic   LootKind = "relic"
 )
 
 type RaidPhase string
@@ -197,7 +173,6 @@ type EntityState struct {
 	Faction            Faction        `json:"faction"`
 	ProfileID          string         `json:"profile_id"`
 	FamilyID           string         `json:"family_id,omitempty"`
-	ClassID            PlayerClass    `json:"class_id,omitempty"`
 	RoomID             string         `json:"room_id,omitempty"`
 	Position           Vec2           `json:"position"`
 	Velocity           Vec2           `json:"velocity"`
@@ -265,12 +240,11 @@ func EntityCenter(state EntityState) Vec2 {
 }
 
 type LootState struct {
-	ID        string   `json:"id"`
-	Kind      LootKind `json:"kind"`
-	ProfileID string   `json:"profile_id,omitempty"`
-	RoomID    string   `json:"room_id,omitempty"`
-	Position  Vec2     `json:"position"`
-	Value     int      `json:"value"`
+	ID        string `json:"id"`
+	ProfileID string `json:"profile_id,omitempty"`
+	RoomID    string `json:"room_id,omitempty"`
+	Position  Vec2   `json:"position"`
+	Value     int    `json:"value"`
 }
 
 type ExitState struct {
@@ -310,7 +284,6 @@ type RevealZoneState struct {
 	Area         Rect   `json:"area"`
 }
 
-// RiftKind describes the colour / capacity tier of a transient rift portal.
 type RiftKind string
 
 const (
@@ -319,8 +292,6 @@ const (
 	RiftKindGreen RiftKind = "green" // 1 use
 )
 
-// RiftCapacity returns the maximum number of players that may pass through a
-// rift of the given kind before it collapses.
 func RiftCapacity(kind RiftKind) int {
 	switch kind {
 	case RiftKindRed:
@@ -333,9 +304,6 @@ func RiftCapacity(kind RiftKind) int {
 	return 1
 }
 
-// RiftState is a one-way, finite-use portal scattered across the map.
-// Unlike JumpLinks, rifts have no reveal zone — the player cannot preview the
-// destination.  Once UsedCount reaches Capacity the rift disappears.
 type RiftState struct {
 	ID           string   `json:"id"`
 	RoomID       string   `json:"room_id"`
@@ -347,7 +315,6 @@ type RiftState struct {
 	UsedCount    int      `json:"used_count"`
 }
 
-// IsOpen reports whether the rift still has remaining capacity.
 func (rs RiftState) IsOpen() bool {
 	return rs.UsedCount < rs.Capacity
 }
@@ -390,7 +357,6 @@ func (layout RaidLayoutState) RoomByID(roomID string) (RoomState, bool) {
 type PlayerRaidState struct {
 	PlayerID        string            `json:"player_id"`
 	Name            string            `json:"name"`
-	ClassID         PlayerClass       `json:"class_id"`
 	Status          PlayerRaidStatus  `json:"status"`
 	CarriedLoot     int               `json:"carried_loot"`
 	AssignedExitID  string            `json:"assigned_exit_id,omitempty"`

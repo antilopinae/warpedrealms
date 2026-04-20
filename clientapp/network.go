@@ -103,10 +103,10 @@ func (c *NetworkClient) authenticate(route string, email string, password string
 	return authResponse.Token, nil
 }
 
-func (c *NetworkClient) Connect(token string, raidID string, classID shared.PlayerClass) error {
+func (c *NetworkClient) Connect(token string, raidID string) error {
 	c.Close()
 
-	wsURL, err := c.websocketURL(token, raidID, classID)
+	wsURL, err := c.websocketURL(token, raidID)
 	if err != nil {
 		return err
 	}
@@ -246,7 +246,7 @@ func (c *NetworkClient) isCurrentConn(conn *websocket.Conn, seq uint64) bool {
 	return c.conn == conn && c.connSeq == seq
 }
 
-func (c *NetworkClient) websocketURL(token string, raidID string, classID shared.PlayerClass) (string, error) {
+func (c *NetworkClient) websocketURL(token string, raidID string) (string, error) {
 	base, err := url.Parse(c.baseURL)
 	if err != nil {
 		return "", fmt.Errorf("parse base url: %w", err)
@@ -264,9 +264,6 @@ func (c *NetworkClient) websocketURL(token string, raidID string, classID shared
 	query.Set("token", token)
 	if raidID != "" {
 		query.Set("raid", raidID)
-	}
-	if classID != "" {
-		query.Set("class", string(classID))
 	}
 	base.RawQuery = query.Encode()
 	return base.String(), nil

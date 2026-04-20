@@ -1,4 +1,4 @@
-# github.com/ebitengine/gomobile v0.0.0-20250923094054-ea854a63cce1
+# github.com/ebitengine/gomobile v0.0.0-20260211053922-3d992dae95d1
 ## explicit; go 1.24.0
 github.com/ebitengine/gomobile/app
 github.com/ebitengine/gomobile/app/internal/callfn
@@ -13,12 +13,13 @@ github.com/ebitengine/gomobile/internal/mobileinit
 # github.com/ebitengine/hideconsole v1.0.0
 ## explicit; go 1.18
 github.com/ebitengine/hideconsole
-# github.com/ebitengine/purego v0.9.0
+# github.com/ebitengine/purego v0.10.0
 ## explicit; go 1.18
 github.com/ebitengine/purego
 github.com/ebitengine/purego/internal/cgo
 github.com/ebitengine/purego/internal/fakecgo
 github.com/ebitengine/purego/internal/strings
+github.com/ebitengine/purego/internal/xreflect
 github.com/ebitengine/purego/objc
 # github.com/gorilla/websocket v1.5.3
 ## explicit; go 1.12
@@ -66,7 +67,7 @@ github.com/hajimehoshi/ebiten/v2/internal/ui
 github.com/hajimehoshi/ebiten/v2/internal/vibrate
 github.com/hajimehoshi/ebiten/v2/internal/winver
 github.com/hajimehoshi/ebiten/v2/vector
-# github.com/jezek/xgb v1.1.1
+# github.com/jezek/xgb v1.3.1
 ## explicit; go 1.11
 github.com/jezek/xgb
 github.com/jezek/xgb/randr
@@ -76,8 +77,8 @@ github.com/jezek/xgb/xproto
 ## explicit; go 1.25.0
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blowfish
-# golang.org/x/sync v0.17.0
-## explicit; go 1.24.0
+# golang.org/x/sync v0.20.0
+## explicit; go 1.25.0
 golang.org/x/sync/errgroup
 # golang.org/x/sys v0.43.0
 ## explicit; go 1.25.0

@@ -145,7 +145,6 @@ func (r *RaidRenderer) drawRoomAsBackground(screen *ebiten.Image, room shared.Ro
 		color.RGBA{6, 10, 20, 110}, false)
 }
 
-
 func (r *RaidRenderer) drawPreviewWindow(screen *ebiten.Image, preview roomPreview, camera shared.Vec2, offset shared.Vec2, scale float64) {
 	rect := preview.rect
 	windowWidth := int(math.Max(64, rect.W*scale))
@@ -407,9 +406,6 @@ func (r *RaidRenderer) DrawLowerEntities(screen *ebiten.Image, layout shared.Rai
 
 	for _, entity := range entities {
 		if entity.RoomID != belowRoom.ID {
-			continue
-		}
-		if entity.Kind != shared.EntityKindPlayer && entity.Kind != shared.EntityKindRat {
 			continue
 		}
 		frame := r.assets.IdleFrame(entity.ProfileID)

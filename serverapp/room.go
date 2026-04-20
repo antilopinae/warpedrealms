@@ -17,7 +17,6 @@ import (
 type Peer struct {
 	playerID   string
 	playerName string
-	classID    shared.PlayerClass
 	conn       *websocket.Conn
 	send       chan shared.ServerMessage
 	room       *RaidRoom
@@ -146,7 +145,6 @@ func newRaidRoomFromRaid(id string, name string, bundle *content.Bundle, maxPlay
 	}
 	room.cacheSolids()
 	room.spawnNPCs()
-	room.spawnInitialLoot()
 	return room, nil
 }
 
@@ -221,28 +219,18 @@ func (r *RaidRoom) handleJoin(peer *Peer) error {
 		if len(r.players) >= r.maxPlayers {
 			return fmt.Errorf("raid is full")
 		}
-		if r.forceKnight {
-			peer.classID = shared.PlayerClassKnight
-		}
-		classDef, ok := r.bundle.Manifest.Class(peer.classID)
+		profile, ok := r.bundle.Manifest.Profile("player_knight")
 		if !ok {
-			classDef = r.bundle.Manifest.Classes[0]
-			peer.classID = classDef.ID
-		}
-		profile, ok := r.bundle.Manifest.Profile(classDef.ProfileID)
-		if !ok {
-			return fmt.Errorf("class profile %s missing", classDef.ProfileID)
+			return fmt.Errorf("class profile missing")
 		}
 		state := profile.DefaultState()
 		state.ID = peer.playerID
 		state.Name = peer.playerName
-		state.ClassID = classDef.ID
 		state.Position = r.spawnPosition(profile)
 		state.RoomID = r.startRoomID()
 		state.AnimationStartedAt = r.serverTime()
 		exit := r.assignExitForJoin()
 		player = &serverPlayer{
-			class:        classDef,
 			profile:      profile,
 			state:        state,
 			status:       shared.PlayerRaidStatusWaiting,
@@ -262,7 +250,6 @@ func (r *RaidRoom) handleJoin(peer *Peer) error {
 		Welcome: &shared.WelcomeMessage{
 			PlayerID:              peer.playerID,
 			PlayerName:            peer.playerName,
-			ClassID:               player.state.ClassID,
 			RaidID:                r.id,
 			RaidName:              r.name,
 			ContentVersion:        r.bundle.Manifest.Version,
@@ -319,7 +306,7 @@ func (r *RaidRoom) simulateTick() {
 	if r.phase == shared.RaidPhaseActive && r.timeRemaining() <= 0 {
 		for _, player := range r.players {
 			if player.status == shared.PlayerRaidStatusActive {
-				r.dropCarriedLoot(player, player.state.Position)
+				// r.dropCarriedLoot(player, player.state.Position)
 				player.carriedLoot = 0
 				player.status = shared.PlayerRaidStatusExpired
 			}
@@ -404,7 +391,6 @@ func (r *RaidRoom) simulateNPC(npc *serverNPC, now float64) {
 		if npc.deadAt == 0 {
 			shared.TriggerAnimation(&npc.state, shared.AnimationDeath, now)
 			npc.deadAt = now + shared.AnimationDuration(npc.state, shared.AnimationDeath)
-			r.spawnLootForNPC(npc)
 		}
 		return
 	}
@@ -518,7 +504,7 @@ func (r *RaidRoom) useAbility(player *serverPlayer, ability content.AbilityDefin
 		player.state.Position.Y -= 80
 	}
 
-	damage := abilityDamage(player.class.ID, ability.ID)
+	damage := abilityDamage(ability.ID)
 	r.applyAbilityHitbox(player, ability.ID, animation, damage, now)
 }
 
@@ -526,7 +512,7 @@ func (r *RaidRoom) applyAbilityHitbox(player *serverPlayer, abilityID string, an
 	box, ok := player.profile.HitboxFor(animation, 0.18, player.state.Facing, player.state.Position)
 	if !ok {
 		center := shared.EntityCenter(player.state)
-		box = defaultAbilityBox(player.class.ID, abilityID, player.state.Facing, center)
+		box = defaultAbilityBox(abilityID, player.state.Facing, center)
 	}
 	for _, other := range r.players {
 		if other == player || other.status != shared.PlayerRaidStatusActive {
@@ -692,7 +678,7 @@ func (r *RaidRoom) applyDamageToPlayer(player *serverPlayer, damage int, dropPos
 	if player.state.HP <= 0 {
 		player.state.HP = 0
 		player.status = shared.PlayerRaidStatusEliminated
-		r.dropCarriedLoot(player, dropPos)
+		// r.dropCarriedLoot(player, dropPos)
 		player.carriedLoot = 0
 		shared.TriggerAnimation(&player.state, shared.AnimationDeath, now)
 		return
@@ -815,11 +801,9 @@ func (r *RaidRoom) entitiesFor(_ string) []shared.EntityState {
 func concealedMimicState(state shared.EntityState, disguiseProfile string) shared.EntityState {
 	state.ID = "concealed-" + state.ID
 	state.Name = ""
-	state.Kind = shared.EntityKindProp
 	state.Faction = shared.FactionNeutral
 	state.ProfileID = disguiseProfile
 	state.FamilyID = "concealed_container"
-	state.ClassID = ""
 	state.HP = 0
 	state.MaxHP = 0
 	state.Animation = shared.AnimationIdle
@@ -844,7 +828,6 @@ func (r *RaidRoom) raidStateFor(localPlayerID string) *shared.RaidState {
 		state := shared.PlayerRaidState{
 			PlayerID:        player.state.ID,
 			Name:            player.state.Name,
-			ClassID:         player.state.ClassID,
 			Status:          player.status,
 			CarriedLoot:     player.carriedLoot,
 			AssignedExitID:  player.assignedExit.ID,
@@ -984,62 +967,6 @@ func (r *RaidRoom) spawnNPCs() {
 	}
 }
 
-func (r *RaidRoom) spawnInitialLoot() {
-	for _, drop := range r.raid.Loot {
-		r.loot[drop.ID] = &lootPickup{
-			state: shared.LootState{
-				ID:        drop.ID,
-				Kind:      drop.Kind,
-				ProfileID: drop.ProfileID,
-				RoomID:    drop.RoomID,
-				Position:  drop.Position,
-				Value:     drop.Value,
-			},
-		}
-	}
-}
-
-func (r *RaidRoom) spawnLootAt(position shared.Vec2, roomID string, value int, kind shared.LootKind, profileID string) {
-	r.nextLootID++
-	id := fmt.Sprintf("loot-drop-%03d", r.nextLootID)
-	r.loot[id] = &lootPickup{
-		state: shared.LootState{
-			ID:        id,
-			Kind:      kind,
-			ProfileID: profileID,
-			RoomID:    roomID,
-			Position:  position,
-			Value:     value,
-		},
-	}
-}
-
-func (r *RaidRoom) dropCarriedLoot(player *serverPlayer, position shared.Vec2) {
-	if player.carriedLoot <= 0 {
-		return
-	}
-	r.spawnLootAt(position, player.state.RoomID, player.carriedLoot, shared.LootKindBag, "loot_coin")
-}
-
-func (r *RaidRoom) spawnLootForNPC(npc *serverNPC) {
-	switch npc.state.Kind {
-	case shared.EntityKindBoss:
-		r.spawnLootAt(npc.state.Position, npc.state.RoomID, 20+r.rand.Intn(10), shared.LootKindRelic, "loot_relic")
-	case shared.EntityKindMimic:
-		r.spawnLootAt(npc.state.Position, npc.state.RoomID, 10+r.rand.Intn(6), shared.LootKindGem, "loot_gem")
-	default:
-		profileID := "loot_coin"
-		kind := shared.LootKindCoin
-		value := 2 + r.rand.Intn(4)
-		if r.rand.Intn(3) == 0 {
-			profileID = "loot_gem"
-			kind = shared.LootKindGem
-			value = 5 + r.rand.Intn(4)
-		}
-		r.spawnLootAt(npc.state.Position, npc.state.RoomID, value, kind, profileID)
-	}
-}
-
 func (r *RaidRoom) assignExitForJoin() shared.ExitState {
 	if len(r.exitRotation) == 0 {
 		return shared.ExitState{}
@@ -1078,46 +1005,22 @@ func (r *RaidRoom) closestActivePlayerInRoom(roomID string, position shared.Vec2
 	return best
 }
 
-func abilityDamage(classID shared.PlayerClass, abilityID string) int {
-	switch classID {
-	case shared.PlayerClassKnight:
-		switch abilityID {
-		case "basic_slash":
-			return 24
-		case "shield_dash":
-			return 38
-		case "guard_counter":
-			return 30
-		case "banner_slam":
-			return 48
-		}
-	case shared.PlayerClassArcherAssassin:
-		switch abilityID {
-		case "quick_shot":
-			return 18
-		case "volley":
-			return 32
-		case "shadow_step":
-			return 26
-		case "marked_burst":
-			return 40
-		}
-	case shared.PlayerClassForestCaster:
-		switch abilityID {
-		case "seed_bolt":
-			return 20
-		case "root_cage":
-			return 30
-		case "blink_leaf":
-			return 24
-		case "wild_bloom":
-			return 44
-		}
+func abilityDamage(abilityID string) int {
+	switch abilityID {
+	case "basic_slash":
+		return 24
+	case "shield_dash":
+		return 38
+	case "guard_counter":
+		return 30
+	case "banner_slam":
+		return 48
 	}
+
 	return 20
 }
 
-func defaultAbilityBox(classID shared.PlayerClass, abilityID string, facing float64, center shared.Vec2) shared.Rect {
+func defaultAbilityBox(abilityID string, facing float64, center shared.Vec2) shared.Rect {
 	makeBox := func(offsetX float64, offsetY float64, width float64, height float64) shared.Rect {
 		x := center.X + offsetX
 		if facing < 0 {
@@ -1126,42 +1029,15 @@ func defaultAbilityBox(classID shared.PlayerClass, abilityID string, facing floa
 		return shared.Rect{X: x, Y: center.Y + offsetY, W: width, H: height}
 	}
 
-	switch classID {
-	case shared.PlayerClassKnight:
-		switch abilityID {
-		case "shield_dash":
-			return makeBox(12, -12, 136, 72)
-		case "guard_counter":
-			return makeBox(-24, -28, 120, 96)
-		case "banner_slam":
-			return makeBox(-42, -42, 164, 132)
-		default:
-			return makeBox(10, -10, 84, 56)
-		}
-	case shared.PlayerClassArcherAssassin:
-		switch abilityID {
-		case "volley":
-			return makeBox(14, -18, 192, 68)
-		case "shadow_step":
-			return makeBox(10, -12, 112, 54)
-		case "marked_burst":
-			return makeBox(16, -20, 236, 72)
-		default:
-			return makeBox(12, -10, 160, 36)
-		}
-	case shared.PlayerClassForestCaster:
-		switch abilityID {
-		case "root_cage":
-			return makeBox(6, -24, 132, 92)
-		case "blink_leaf":
-			return makeBox(-18, -24, 112, 92)
-		case "wild_bloom":
-			return makeBox(-36, -46, 164, 144)
-		default:
-			return makeBox(14, -20, 170, 44)
-		}
+	switch abilityID {
+	case "shield_dash":
+		return makeBox(12, -12, 136, 72)
+	case "guard_counter":
+		return makeBox(-24, -28, 120, 96)
+	case "banner_slam":
+		return makeBox(-42, -42, 164, 132)
 	default:
-		return makeBox(12, -12, 84, 56)
+		return makeBox(10, -10, 84, 56)
 	}
 }
 
