@@ -26,7 +26,10 @@ func NewRaidRenderer(assets *Assets) *RaidRenderer {
 	return &RaidRenderer{assets: assets}
 }
 
-func (r *RaidRenderer) DrawScene(screen *ebiten.Image, layout shared.RaidLayoutState, activeRoomID string, camera shared.Vec2, offset shared.Vec2, scale float64, preview *roomPreview) {
+// DrawScene renders the active room and its background (if any).
+// revealBgRoomID, when non-empty, overrides BelowRoomID as the background room
+// to show — used when the local player is inside a RevealZone.
+func (r *RaidRenderer) DrawScene(screen *ebiten.Image, layout shared.RaidLayoutState, activeRoomID string, camera shared.Vec2, offset shared.Vec2, scale float64, preview *roomPreview, revealBgRoomID string) {
 	activeRoom, ok := layout.RoomByID(activeRoomID)
 	if !ok && len(layout.Rooms) > 0 {
 		activeRoom = layout.Rooms[0]
@@ -40,10 +43,14 @@ func (r *RaidRenderer) DrawScene(screen *ebiten.Image, layout shared.RaidLayoutS
 	r.drawBackgroundForRoom(screen, activeRoom, camera, offset, scale, 1)
 
 	// 2. Background room — the other sublocation visible "through the wall".
-	//    Rendered at bgDepthScale so it looks clearly distant: platforms are
-	//    smaller, more of the level is visible at once, entities look far away.
-	if activeRoom.BelowRoomID != "" {
-		if bgRoom, ok := layout.RoomByID(activeRoom.BelowRoomID); ok {
+	//    Priority: RevealZone override > BelowRoomID chain.
+	//    Rendered at bgDepthScale so it looks clearly distant.
+	bgRoomID := revealBgRoomID
+	if bgRoomID == "" {
+		bgRoomID = activeRoom.BelowRoomID
+	}
+	if bgRoomID != "" {
+		if bgRoom, ok := layout.RoomByID(bgRoomID); ok {
 			bgSc, bgCam := bgRoomTransform(camera, scale, offset)
 			r.drawRoomAsBackground(screen, bgRoom, bgCam, offset, bgSc)
 		}
@@ -81,46 +88,53 @@ func bgRoomTransform(fgCam shared.Vec2, fgScale float64, offset shared.Vec2) (fl
 }
 
 // drawRoomAsBackground renders the background room as glowing platform-surface
-// lines rather than solid filled blocks.  Only the TOP EDGE of each platform
-// cell is drawn (bright biome rim colour); the cell body is a very subtle fill.
-// This avoids the solid-fill problem that occurs when many 16×16 cells pack
-// together and cover the entire screen with a single colour.
+// lines rather than solid filled blocks.  Individual 16×16 cells get a subtle
+// body fill and a bright top-rim.  Wide boundary rects (floor / walls added by
+// the LDtk loader) are drawn as a dark ground-mass so the bottom of the room
+// is visible and does not clip into the void.
 func (r *RaidRenderer) drawRoomAsBackground(screen *ebiten.Image, room shared.RoomState, camera shared.Vec2, offset shared.Vec2, scale float64) {
 	const gs = 16.0 // grid cell size in world pixels
 
-	// Build a lookup of occupied cells (skip large boundary-wall rects).
+	// Build a lookup of occupied cells (for top-rim detection).
 	type cellKey [2]int
 	occupied := make(map[cellKey]bool, len(room.Solids))
 	for _, s := range room.Solids {
-		if s.W != gs || s.H != gs {
-			continue
+		if s.W == gs && s.H == gs {
+			occupied[cellKey{int(math.Round(s.X / gs)), int(math.Round(s.Y / gs))}] = true
 		}
-		occupied[cellKey{int(math.Round(s.X / gs)), int(math.Round(s.Y / gs))}] = true
 	}
 
 	_, rimClr := platformColors(room.Biome, 0.90)
 	fillClr, _ := platformColors(room.Biome, 0.12)
 	rimH := float32(math.Max(3, scale*gs*0.30)) // bright top-rim height in screen px
 
-	for _, s := range room.Solids {
-		if s.W != gs || s.H != gs {
-			continue
-		}
-		col := int(math.Round(s.X / gs))
-		row := int(math.Round(s.Y / gs))
+	// Boundary fill colour: dark near-black mass for floor / walls.
+	fillBig, _ := platformColors(room.Biome, 0.28)
+	rimBig := rimClr
+	rimBig.A = uint8(float64(rimBig.A) * 0.7)
 
+	for _, s := range room.Solids {
 		sx := float32(offset.X + (s.X-camera.X)*scale)
 		sy := float32(offset.Y + (s.Y-camera.Y)*scale)
-		sw := float32(gs * scale)
-		sh := float32(gs * scale)
+		sw := float32(s.W * scale)
+		sh := float32(s.H * scale)
 
-		// Very subtle body fill — just enough to imply volume.
-		vector.DrawFilledRect(screen, sx, sy, sw, sh, fillClr, false)
-
-		// Bright surface rim only on the top-exposed face of each cell.
-		if !occupied[cellKey{col, row - 1}] {
-			vector.DrawFilledRect(screen, sx, sy, sw, rimH, rimClr, false)
+		if s.W == gs && s.H == gs {
+			// Individual platform cell — subtle fill + bright top rim.
+			col := int(math.Round(s.X / gs))
+			row := int(math.Round(s.Y / gs))
+			vector.DrawFilledRect(screen, sx, sy, sw, sh, fillClr, false)
+			if !occupied[cellKey{col, row - 1}] {
+				vector.DrawFilledRect(screen, sx, sy, sw, rimH, rimClr, false)
+			}
+		} else if s.W > gs*4 && s.H >= gs {
+			// Wide boundary rect (floor or wide ledge) — draw as ground mass.
+			vector.DrawFilledRect(screen, sx, sy, sw, sh, fillBig, false)
+			// Bright top edge so the floor reads as a surface.
+			vector.DrawFilledRect(screen, sx, sy, sw, float32(math.Max(2, float64(rimH)*0.8)), rimBig, false)
 		}
+		// Narrow vertical walls (left/right boundary) — deliberately skipped
+		// to avoid blocking the view of the background room.
 	}
 
 	// Atmospheric depth haze over the whole background layer.
@@ -288,6 +302,23 @@ func (r *RaidRenderer) drawRoomGeometry(screen *ebiten.Image, room shared.RoomSt
 			r.drawImageAlpha(screen, style.JumpPreview, topLeft.X+link.Area.W*scale*0.18, topLeft.Y+link.Area.H*scale*0.15, scale*0.9, scale*0.9, alpha)
 		}
 	}
+
+	// Rifts — color-coded transient portals (no reveal zone).
+	for _, rift := range room.Rifts {
+		if !rift.IsOpen() {
+			continue
+		}
+		clr := riftColor(rift.Kind, alpha)
+		topLeft := shared.Vec2{X: offset.X + (rift.Area.X-camera.X)*scale, Y: offset.Y + (rift.Area.Y-camera.Y)*scale}
+		sw, sh := float32(rift.Area.W*scale), float32(rift.Area.H*scale)
+		// Faint fill so the rift has presence even without an FX image.
+		vector.DrawFilledRect(screen, float32(topLeft.X), float32(topLeft.Y), sw, sh, color.RGBA{clr.R, clr.G, clr.B, uint8(float64(clr.A) * 0.18)}, false)
+		vector.StrokeRect(screen, float32(topLeft.X), float32(topLeft.Y), sw, sh, float32(math.Max(2, scale*1.5)), clr, false)
+		// Vertical shimmer lines.
+		mid := float32(topLeft.X) + sw*0.5
+		vector.StrokeLine(screen, mid-sw*0.15, float32(topLeft.Y)+2, mid-sw*0.15, float32(topLeft.Y)+sh-2, 1, clr, false)
+		vector.StrokeLine(screen, mid+sw*0.15, float32(topLeft.Y)+2, mid+sw*0.15, float32(topLeft.Y)+sh-2, 1, clr, false)
+	}
 }
 
 // drawTileLayers renders all visible tile layers for this room.
@@ -385,12 +416,14 @@ func (r *RaidRenderer) DrawLowerEntities(screen *ebiten.Image, layout shared.Rai
 		if frame == nil {
 			continue
 		}
-		screenPos := shared.Vec2{
-			X: offset.X + (entity.Position.X-bgCam.X)*bgSc,
-			Y: offset.Y + (entity.Position.Y-bgCam.Y)*bgSc,
-		}
 		bounds := frame.Bounds()
 		entityScale := bgSc * maxf(0.1, entity.Scale)
+		// Position.Y is the FEET of the entity; sprite must be drawn ABOVE it.
+		// Also center horizontally on Position.X (same convention as foreground drawEntity).
+		screenPos := shared.Vec2{
+			X: offset.X + (entity.Position.X-bgCam.X)*bgSc - float64(bounds.Dx())*entityScale*0.5,
+			Y: offset.Y + (entity.Position.Y-bgCam.Y)*bgSc - float64(bounds.Dy())*entityScale,
+		}
 		op := &ebiten.DrawImageOptions{}
 		if entity.Facing < 0 {
 			op.GeoM.Scale(-entityScale, entityScale)
@@ -460,6 +493,21 @@ func (r *RaidRenderer) drawEffect(screen *ebiten.Image, image *ebiten.Image, x f
 	op.GeoM.Translate(x, y)
 	op.ColorScale.Scale(1, 1, 1, float32(alpha))
 	screen.DrawImage(image, op)
+}
+
+// riftColor returns the stroke colour for a rift based on its kind.
+// Red = 5 uses, Blue = 2 uses, Green = 1 use.
+func riftColor(kind shared.RiftKind, alpha float64) color.RGBA {
+	a := uint8(255 * alpha)
+	switch kind {
+	case shared.RiftKindRed:
+		return color.RGBA{255, 60, 60, a}
+	case shared.RiftKindBlue:
+		return color.RGBA{80, 140, 255, a}
+	case shared.RiftKindGreen:
+		return color.RGBA{60, 210, 90, a}
+	}
+	return color.RGBA{200, 200, 200, a}
 }
 
 // platformColors returns a fill colour and a bright top-edge rim colour for

@@ -59,7 +59,7 @@ type Game struct {
 	hasRaidState  bool
 	currentLayout shared.RaidLayoutState
 	hasLayout     bool
-	layoutSolids  []shared.Rect
+	layoutSolids  map[string][]shared.Rect // roomID → solids; never cross-room
 
 	localPlayer      shared.EntityState
 	localReady       bool
@@ -347,7 +347,7 @@ func (g *Game) updateGame() {
 	}
 
 	if g.localPlayer.Travel == nil || !g.localPlayer.Travel.Active {
-		shared.SimulatePlayer(&g.localPlayer, command, g.layoutSolids)
+		shared.SimulatePlayer(&g.localPlayer, command, g.solidsForPlayer())
 	}
 	shared.RefreshAnimation(&g.localPlayer, now)
 	if err := g.network.SendInputs(g.pendingInput); err != nil {
@@ -497,6 +497,7 @@ func (g *Game) resetRaidState() {
 	g.currentLayout = shared.RaidLayoutState{}
 	g.hasLayout = false
 	g.layoutSolids = nil
+
 }
 
 func (g *Game) captureInput() shared.InputCommand {
@@ -651,7 +652,7 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	if activeRoomID == "" && len(g.currentLayout.Rooms) > 0 {
 		activeRoomID = g.currentLayout.Rooms[0].ID
 	}
-	g.renderer.DrawScene(screen, g.currentLayout, activeRoomID, g.camera, g.viewOffset, g.worldScale, g.currentPreview())
+	g.renderer.DrawScene(screen, g.currentLayout, activeRoomID, g.camera, g.viewOffset, g.worldScale, g.currentPreview(), g.revealBgRoomID(activeRoomID))
 	g.drawLoot(screen)
 
 	entities := make([]shared.EntityState, 0, len(g.interpolators)+1)
@@ -683,6 +684,26 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	g.drawInteractionPrompt(screen, entities)
 }
 
+// revealBgRoomID returns the TargetRoomID of the first RevealZone that
+// contains the local player's centre, or "" if none is found.
+// This overrides the BelowRoomID background when the player approaches a portal.
+func (g *Game) revealBgRoomID(activeRoomID string) string {
+	if !g.localReady {
+		return ""
+	}
+	room, ok := g.currentLayout.RoomByID(activeRoomID)
+	if !ok {
+		return ""
+	}
+	center := shared.EntityCenter(g.localPlayer)
+	for _, zone := range room.RevealZones {
+		if zone.Area.ContainsPoint(center) {
+			return zone.TargetRoomID
+		}
+	}
+	return ""
+}
+
 func (g *Game) drawPhysicsDebug(screen *ebiten.Image, activeRoomID string, entities []shared.EntityState) {
 	room, ok := g.currentLayout.RoomByID(activeRoomID)
 	if !ok {
@@ -704,6 +725,33 @@ func (g *Game) drawPhysicsDebug(screen *ebiten.Image, activeRoomID string, entit
 		sx := float32(g.viewOffset.X + (link.Area.X-g.camera.X)*g.worldScale)
 		sy := float32(g.viewOffset.Y + (link.Area.Y-g.camera.Y)*g.worldScale)
 		vector.StrokeRect(screen, sx, sy, float32(link.Area.W*g.worldScale), float32(link.Area.H*g.worldScale), 2, color.RGBA{255, 220, 0, 220}, false)
+	}
+
+	// Draw reveal zones (translucent white outline).
+	for _, zone := range room.RevealZones {
+		sx := float32(g.viewOffset.X + (zone.Area.X-g.camera.X)*g.worldScale)
+		sy := float32(g.viewOffset.Y + (zone.Area.Y-g.camera.Y)*g.worldScale)
+		vector.StrokeRect(screen, sx, sy, float32(zone.Area.W*g.worldScale), float32(zone.Area.H*g.worldScale), 1, color.RGBA{220, 220, 255, 140}, false)
+	}
+
+	// Draw rifts: color-coded, show capacity / used count.
+	for _, rift := range room.Rifts {
+		sx := float32(g.viewOffset.X + (rift.Area.X-g.camera.X)*g.worldScale)
+		sy := float32(g.viewOffset.Y + (rift.Area.Y-g.camera.Y)*g.worldScale)
+		sw := float32(rift.Area.W * g.worldScale)
+		sh := float32(rift.Area.H * g.worldScale)
+		clr := riftDebugColor(rift.Kind, rift.IsOpen())
+		vector.StrokeRect(screen, sx, sy, sw, sh, 2, clr, false)
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%s %d/%d", rift.Kind, rift.UsedCount, rift.Capacity), int(sx), int(sy)-14)
+	}
+
+	// Draw spawn points as orange circles (stored in layout, generated for the first room).
+	for i, spawn := range g.currentLayout.PlayerSpawns {
+		sx := float32(g.viewOffset.X + (spawn.X-g.camera.X)*g.worldScale)
+		sy := float32(g.viewOffset.Y + (spawn.Y-g.camera.Y)*g.worldScale)
+		vector.DrawFilledCircle(screen, sx, sy, 8, color.RGBA{255, 140, 0, 180}, false)
+		vector.StrokeCircle(screen, sx, sy, 8, 2, color.RGBA{255, 200, 80, 255}, false)
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("S%d", i+1), int(sx)+10, int(sy)-8)
 	}
 
 	// Draw entity physics capsules: green if grounded, red if airborne.
@@ -775,7 +823,7 @@ func (g *Game) drawPhysicsDebug(screen *ebiten.Image, activeRoomID string, entit
 			int(bx), int(by)-16)
 	}
 
-	ebitenutil.DebugPrintAt(screen, "[F3] debug physics ON  |  cyan=solids  green/red=capsule  magenta=hurtbox  orange=hitbox", 16, shared.ScreenHeight-22)
+	ebitenutil.DebugPrintAt(screen, "[F3] debug  cyan=solid  yellow=portal  white=reveal  rift=R/B/G  orange●=spawn", 16, shared.ScreenHeight-22)
 }
 
 func (g *Game) drawLoot(screen *ebiten.Image) {
@@ -889,6 +937,18 @@ func (g *Game) drawInteractionPrompt(screen *ebiten.Image, entities []shared.Ent
 		for _, link := range room.JumpLinks {
 			if link.Area.ContainsPoint(localCenter) || link.Area.Intersects(localBounds) {
 				prompt = fmt.Sprintf("%s %s", BindingLabel(g.controls, ActionUseJumpLink), link.Label)
+				break
+			}
+		}
+	}
+	if prompt == "" {
+		for _, rift := range room.Rifts {
+			if !rift.IsOpen() {
+				continue
+			}
+			if rift.Area.ContainsPoint(localCenter) || rift.Area.Intersects(localBounds) {
+				remaining := rift.Capacity - rift.UsedCount
+				prompt = fmt.Sprintf("%s Rift [%s] — %d use(s) left", BindingLabel(g.controls, ActionUseJumpLink), rift.Kind, remaining)
 				break
 			}
 		}
@@ -1194,7 +1254,7 @@ func (g *Game) reconcileLocal(authoritative shared.EntityState, ackSeq uint32) {
 	}
 	for _, command := range g.pendingInput {
 		if g.localPlayer.Travel == nil || !g.localPlayer.Travel.Active {
-			shared.SimulatePlayer(&g.localPlayer, command, g.layoutSolids)
+			shared.SimulatePlayer(&g.localPlayer, command, g.solidsForPlayer())
 		}
 	}
 	shared.RefreshAnimation(&g.localPlayer, now)
@@ -1271,12 +1331,23 @@ func (g *Game) currentPreview() *roomPreview {
 	return nil
 }
 
-func (g *Game) buildLayoutSolids(layout shared.RaidLayoutState) []shared.Rect {
-	solids := make([]shared.Rect, 0, len(layout.Rooms)*8)
+// buildLayoutSolids builds a per-room solid map so physics never crosses
+// room boundaries.  Each room's entities only collide against their own terrain.
+func (g *Game) buildLayoutSolids(layout shared.RaidLayoutState) map[string][]shared.Rect {
+	m := make(map[string][]shared.Rect, len(layout.Rooms))
 	for _, room := range layout.Rooms {
-		solids = append(solids, room.Solids...)
+		m[room.ID] = room.Solids
 	}
-	return solids
+	return m
+}
+
+// solidsForPlayer returns the collision slice for the room the local player
+// is currently in, or nil if not yet known (safe — SimulatePlayer handles nil).
+func (g *Game) solidsForPlayer() []shared.Rect {
+	if g.layoutSolids == nil {
+		return nil
+	}
+	return g.layoutSolids[g.localPlayer.RoomID]
 }
 
 func (g *Game) worldToScreen(position shared.Vec2) shared.Vec2 {
@@ -1342,4 +1413,21 @@ func clamp(value float64, minValue float64, maxValue float64) float64 {
 		return maxValue
 	}
 	return value
+}
+
+
+// riftDebugColor returns a debug outline colour for a rift based on kind and open state.
+func riftDebugColor(kind shared.RiftKind, isOpen bool) color.RGBA {
+	if !isOpen {
+		return color.RGBA{80, 80, 80, 160} // closed — grey
+	}
+	switch kind {
+	case shared.RiftKindRed:
+		return color.RGBA{255, 60, 60, 220}
+	case shared.RiftKindBlue:
+		return color.RGBA{80, 140, 255, 220}
+	case shared.RiftKindGreen:
+		return color.RGBA{60, 210, 90, 220}
+	}
+	return color.RGBA{200, 200, 200, 200}
 }

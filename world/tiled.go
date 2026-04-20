@@ -27,6 +27,7 @@ type MapData struct {
 	RatSpawns    []shared.Vec2  // rat / enemy spawn points
 	JumpLinks    []MapJumpLink  // portal / door connections
 	RevealZones  []MapRevealZone
+	Rifts        []MapRift      // transient finite-use portals
 }
 
 // DefaultPlayerSpawn returns a safe player spawn point.
@@ -57,4 +58,16 @@ type MapRevealZone struct {
 	ID     string
 	Area   shared.Rect
 	Target string // destination room identifier or "above"/"below"
+}
+
+// MapRift is a transient inter-room portal with finite capacity.
+// Kind is one of "red" (5 uses), "blue" (2 uses), "green" (1 use).
+type MapRift struct {
+	ID         string
+	Area       shared.Rect
+	Target     string // destination room ID
+	Kind       string // "red" | "blue" | "green"
+	HasArrival bool
+	ArrivalX   float64
+	ArrivalY   float64
 }

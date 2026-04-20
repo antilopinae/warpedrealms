@@ -310,6 +310,48 @@ type RevealZoneState struct {
 	Area         Rect   `json:"area"`
 }
 
+// RiftKind describes the colour / capacity tier of a transient rift portal.
+type RiftKind string
+
+const (
+	RiftKindRed   RiftKind = "red"   // 5 uses
+	RiftKindBlue  RiftKind = "blue"  // 2 uses
+	RiftKindGreen RiftKind = "green" // 1 use
+)
+
+// RiftCapacity returns the maximum number of players that may pass through a
+// rift of the given kind before it collapses.
+func RiftCapacity(kind RiftKind) int {
+	switch kind {
+	case RiftKindRed:
+		return 5
+	case RiftKindBlue:
+		return 2
+	case RiftKindGreen:
+		return 1
+	}
+	return 1
+}
+
+// RiftState is a one-way, finite-use portal scattered across the map.
+// Unlike JumpLinks, rifts have no reveal zone — the player cannot preview the
+// destination.  Once UsedCount reaches Capacity the rift disappears.
+type RiftState struct {
+	ID           string   `json:"id"`
+	RoomID       string   `json:"room_id"`
+	TargetRoomID string   `json:"target_room_id"`
+	Area         Rect     `json:"area"`
+	Arrival      Vec2     `json:"arrival"`
+	Kind         RiftKind `json:"kind"`
+	Capacity     int      `json:"capacity"`
+	UsedCount    int      `json:"used_count"`
+}
+
+// IsOpen reports whether the rift still has remaining capacity.
+func (rs RiftState) IsOpen() bool {
+	return rs.UsedCount < rs.Capacity
+}
+
 type RoomState struct {
 	ID           string             `json:"id"`
 	Name         string             `json:"name"`
@@ -325,13 +367,15 @@ type RoomState struct {
 	Decorations  []PlacedAssetState `json:"decorations,omitempty"`
 	JumpLinks    []JumpLinkState    `json:"jump_links,omitempty"`
 	RevealZones  []RevealZoneState  `json:"reveal_zones,omitempty"`
+	Rifts        []RiftState        `json:"rifts,omitempty"`
 	PvPZones     []Rect             `json:"pvp_zones,omitempty"`
 	Exits        []ExitState        `json:"exits,omitempty"`
 }
 
 type RaidLayoutState struct {
-	Seed  int64       `json:"seed"`
-	Rooms []RoomState `json:"rooms"`
+	Seed         int64       `json:"seed"`
+	Rooms        []RoomState `json:"rooms"`
+	PlayerSpawns []Vec2      `json:"player_spawns,omitempty"`
 }
 
 func (layout RaidLayoutState) RoomByID(roomID string) (RoomState, bool) {

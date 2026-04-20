@@ -286,6 +286,23 @@ func ldtkExtractEntities(m *MapData, layer ldtkLayerInstance) {
 				Area:   shared.Rect{X: px, Y: py, W: float64(e.Width), H: float64(e.Height)},
 				Target: props["target"],
 			})
+
+		case "rift":
+			rift := MapRift{
+				ID:   fmt.Sprintf("rift-%d-%d", e.PX[0], e.PX[1]),
+				Area: shared.Rect{X: px, Y: py, W: float64(e.Width), H: float64(e.Height)},
+				Target: props["target"],
+				Kind:   props["kind"],
+			}
+			if rift.Kind == "" {
+				rift.Kind = "green"
+			}
+			if v, ok := props["arrival_x"]; ok {
+				rift.HasArrival = true
+				fmt.Sscanf(v, "%f", &rift.ArrivalX)
+				fmt.Sscanf(props["arrival_y"], "%f", &rift.ArrivalY)
+			}
+			m.Rifts = append(m.Rifts, rift)
 		}
 	}
 }

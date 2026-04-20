@@ -9,46 +9,67 @@
     "connector"
   ],
   "leftSocket": {
-    "SurfaceY": 155,
+    "SurfaceY": 183,
     "Type": "platform"
   },
   "rightSocket": {
-    "SurfaceY": 155,
+    "SurfaceY": 183,
     "Type": "platform"
   },
   "islands": [
     {
-      "X": 3,
-      "Y": 155,
-      "W": 54,
+      "X": 2,
+      "Y": 183,
+      "W": 56,
       "H": 3,
       "Kind": "main"
     },
     {
-      "X": 18,
-      "Y": 120,
-      "W": 24,
+      "X": 8,
+      "Y": 178,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 34,
+      "Y": 178,
+      "W": 18,
+      "H": 2,
+      "Kind": "step"
+    },
+    {
+      "X": 16,
+      "Y": 173,
+      "W": 26,
       "H": 2,
       "Kind": "branch"
     },
     {
-      "X": 5,
-      "Y": 85,
+      "X": 4,
+      "Y": 168,
       "W": 20,
       "H": 2,
       "Kind": "step"
     },
     {
-      "X": 35,
-      "Y": 78,
+      "X": 36,
+      "Y": 168,
       "W": 20,
       "H": 2,
       "Kind": "step"
     },
     {
-      "X": 15,
-      "Y": 30,
-      "W": 30,
+      "X": 10,
+      "Y": 163,
+      "W": 40,
+      "H": 2,
+      "Kind": "branch"
+    },
+    {
+      "X": 14,
+      "Y": 158,
+      "W": 32,
       "H": 2,
       "Kind": "secret"
     }

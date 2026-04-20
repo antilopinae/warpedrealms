@@ -538,7 +538,7 @@ func (a *App) drawPreviewMode(screen *ebiten.Image) {
 	}
 	room := a.preview.Layout.Rooms[0]
 	camera := shared.Vec2{X: room.Bounds.X, Y: room.Bounds.Y}
-	a.renderer.DrawScene(screen, a.preview.Layout, room.ID, camera, shared.Vec2{}, 0.18, nil)
+	a.renderer.DrawScene(screen, a.preview.Layout, room.ID, camera, shared.Vec2{}, 0.18, nil, "")
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Generated rooms: %d", len(a.preview.Layout.Rooms)), 20, 124)
 }
 

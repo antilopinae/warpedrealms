@@ -284,11 +284,13 @@ const (
 	uidEntityRat      = 11
 	uidEntityJumpLink = 12
 	uidEntityReveal   = 13
+	uidEntityRift     = 14
 
 	uidFieldTarget   = 20
 	uidFieldLabel    = 21
 	uidFieldArrivalX = 22
 	uidFieldArrivalY = 23
+	uidFieldKind     = 24
 )
 
 // ─── WriteLDtkFile ────────────────────────────────────────────────────────────
@@ -353,11 +355,19 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 		makeEntityDef("Rat", uidEntityRat, "#FF6600", 20, 30),
 		makeEntityDef("JumpLink", uidEntityJumpLink, "#00CCFF", 56, 56),
 		makeEntityDef("RevealZone", uidEntityReveal, "#FFFF00", 64, 64),
+		makeEntityDef("Rift", uidEntityRift, "#FF4444", 32, 32),
 	}
-	// Add field defs to JumpLink.
+	// Add field defs to JumpLink (index 2).
 	entityDefs[2].FieldDefs = []ldtkFieldDef{
 		makeFieldDef("target", uidFieldTarget, "String"),
 		makeFieldDef("label", uidFieldLabel, "String"),
+		makeFieldDef("arrival_x", uidFieldArrivalX, "Float"),
+		makeFieldDef("arrival_y", uidFieldArrivalY, "Float"),
+	}
+	// Add field defs to Rift (index 4).
+	entityDefs[4].FieldDefs = []ldtkFieldDef{
+		makeFieldDef("target", uidFieldTarget, "String"),
+		makeFieldDef("kind", uidFieldKind, "String"),
 		makeFieldDef("arrival_x", uidFieldArrivalX, "Float"),
 		makeFieldDef("arrival_y", uidFieldArrivalY, "Float"),
 	}
@@ -391,6 +401,8 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 				defUID = uidEntityJumpLink
 			case "RevealZone":
 				defUID = uidEntityReveal
+			case "Rift":
+				defUID = uidEntityRift
 			}
 
 			fields := make([]ldtkWriteField, len(ent.Fields))
@@ -400,6 +412,8 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 				switch f.Key {
 				case "label":
 					fUID = uidFieldLabel
+				case "kind":
+					fUID = uidFieldKind
 				case "arrival_x":
 					fUID = uidFieldArrivalX
 					fType = "Float"

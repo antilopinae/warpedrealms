@@ -379,6 +379,9 @@ func (r *RaidRoom) simulatePlayer(player *serverPlayer, input shared.InputComman
 		if r.tryUseJumpLink(player, now) {
 			return
 		}
+		if r.tryUseRift(player, now) {
+			return
+		}
 	}
 	if input.PrimaryAttack {
 		r.useAbility(player, player.class.Skills[0], shared.NextAttackAnimation(player.state, player.attackCombo), now)
@@ -612,6 +615,47 @@ func (r *RaidRoom) tryUseJumpLink(player *serverPlayer, now float64) bool {
 		}
 		shared.TriggerAnimation(&player.state, shared.AnimationTravel, now)
 		return true
+	}
+	return false
+}
+
+// tryUseRift checks whether the player is standing inside an open rift.
+// If so, it increments the rift's UsedCount, removes fully-depleted rifts,
+// and starts a TravelState to send the player to the rift's target room.
+func (r *RaidRoom) tryUseRift(player *serverPlayer, now float64) bool {
+	if player.state.Travel != nil && player.state.Travel.Active {
+		return true
+	}
+	center := shared.EntityCenter(player.state)
+	for ri := range r.raid.Layout.Rooms {
+		if r.raid.Layout.Rooms[ri].ID != player.state.RoomID {
+			continue
+		}
+		rifts := r.raid.Layout.Rooms[ri].Rifts
+		for i := range rifts {
+			if !rifts[i].IsOpen() {
+				continue
+			}
+			if !rifts[i].Area.ContainsPoint(center) {
+				continue
+			}
+			// Found a usable rift.
+			r.raid.Layout.Rooms[ri].Rifts[i].UsedCount++
+			rift := r.raid.Layout.Rooms[ri].Rifts[i]
+			player.state.Travel = &shared.TravelState{
+				Active:     true,
+				LinkID:     rift.ID,
+				FromRoomID: rift.RoomID,
+				ToRoomID:   rift.TargetRoomID,
+				Start:      player.state.Position,
+				End:        rift.Arrival,
+				StartedAt:  now,
+				EndsAt:     now + 0.78,
+			}
+			shared.TriggerAnimation(&player.state, shared.AnimationTravel, now)
+			return true
+		}
+		break
 	}
 	return false
 }
@@ -1005,10 +1049,15 @@ func (r *RaidRoom) assignExitForJoin() shared.ExitState {
 	return exit
 }
 
-func (r *RaidRoom) spawnPosition(profile content.AssetProfile) shared.Vec2 {
-	position := r.raid.PlayerSpawn
-	position.X += float64((r.spawnIndex % max(1, r.maxPlayers)) * 76)
-	return position
+func (r *RaidRoom) spawnPosition(_ content.AssetProfile) shared.Vec2 {
+	spawns := r.raid.PlayerSpawns
+	if len(spawns) == 0 {
+		// Fallback: single spawn with per-player X offset.
+		pos := r.raid.PlayerSpawn
+		pos.X += float64((r.spawnIndex % max(1, r.maxPlayers)) * 76)
+		return pos
+	}
+	return spawns[r.spawnIndex%len(spawns)]
 }
 
 func (r *RaidRoom) closestActivePlayerInRoom(roomID string, position shared.Vec2) *serverPlayer {

@@ -30,10 +30,11 @@ type GeneratedLoot struct {
 }
 
 type GeneratedRaid struct {
-	Layout      shared.RaidLayoutState
-	PlayerSpawn shared.Vec2
-	NPCs        []GeneratedNPC
-	Loot        []GeneratedLoot
+	Layout       shared.RaidLayoutState
+	PlayerSpawn  shared.Vec2   // primary spawn (index 0), kept for back-compat
+	PlayerSpawns []shared.Vec2 // one entry per player slot; cycles on overflow
+	NPCs         []GeneratedNPC
+	Loot         []GeneratedLoot
 }
 
 func (b *Bundle) GenerateRaid(seed int64) (*GeneratedRaid, error) {
@@ -412,6 +413,27 @@ func (b *Bundle) buildRaidFromMaps(maps []*world.MapData) (*GeneratedRaid, error
 			})
 		}
 
+		for j, rift := range m.Rifts {
+			targetIdx := resolveTarget(i, rift.Target)
+			cap := shared.RiftCapacity(shared.RiftKind(rift.Kind))
+			var arrival shared.Vec2
+			if rift.HasArrival {
+				arrival = shared.Vec2{X: rift.ArrivalX, Y: rift.ArrivalY}
+			} else {
+				arrival = rooms[targetIdx].Bounds.Center()
+			}
+			rooms[i].Rifts = append(rooms[i].Rifts, shared.RiftState{
+				ID:           fmt.Sprintf("%s-rift-%02d", rooms[i].ID, j+1),
+				RoomID:       rooms[i].ID,
+				TargetRoomID: rooms[targetIdx].ID,
+				Area:         rift.Area,
+				Arrival:      arrival,
+				Kind:         shared.RiftKind(rift.Kind),
+				Capacity:     cap,
+				UsedCount:    0,
+			})
+		}
+
 		// Rat NPCs from entity spawns.
 		for _, spawn := range m.RatSpawns {
 			npcIndex++
@@ -425,18 +447,25 @@ func (b *Bundle) buildRaidFromMaps(maps []*world.MapData) (*GeneratedRaid, error
 		}
 	}
 
-	// Player spawn: first spawn point in first map.
+	// Player spawns: collect all Player entities from the first map.
+	// Each entry becomes an independent spawn slot; spawnPosition cycles through them.
 	playerSpawn := rooms[0].Bounds.Center()
+	var playerSpawns []shared.Vec2
 	if len(maps[0].PlayerSpawns) > 0 {
 		playerSpawn = maps[0].DefaultPlayerSpawn(0)
+		playerSpawns = append(playerSpawns, maps[0].PlayerSpawns...)
+	}
+	if len(playerSpawns) == 0 {
+		playerSpawns = []shared.Vec2{playerSpawn}
 	}
 
 	sort.Slice(rooms, func(i, j int) bool { return rooms[i].Index < rooms[j].Index })
 
 	return &GeneratedRaid{
-		Layout:      shared.RaidLayoutState{Rooms: rooms},
-		PlayerSpawn: playerSpawn,
-		NPCs:        npcs,
+		Layout:       shared.RaidLayoutState{Rooms: rooms, PlayerSpawns: playerSpawns},
+		PlayerSpawn:  playerSpawn,
+		PlayerSpawns: playerSpawns,
+		NPCs:         npcs,
 	}, nil
 }
 

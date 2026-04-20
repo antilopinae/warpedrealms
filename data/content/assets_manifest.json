@@ -210,7 +210,7 @@
         "x": 13,
         "y": 74
       },
-      "max_hp": 150,
+      "max_hp": 2500,
       "moveset": "humanoid",
       "animations": [
         {

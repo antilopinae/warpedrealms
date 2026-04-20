@@ -2,14 +2,15 @@ package content
 
 // procgen.go — node-based procedural session generator.
 //
-// Produces 6 locations per session connected as a graph (spanning tree +
-// 1-2 extra edges).  Each location is assembled from pre-authored node files
+// Produces N locations per session connected as a graph (spanning tree +
+// extra edges).  Each location is assembled from pre-authored node files
 // stored in gamedata/nodes/ by combining compatible room chunks side-by-side.
 //
-// Location size: 800 × 200 blocks at 16 px/block = 12 800 × 3 200 px.
+// Default location size: 600 × 300 blocks at 16 px/block = 9 600 × 4 800 px.
 // Style: Dead-Cells aerial — floating islands, open air, multiple paths.
 //
 // Entry point:  bundle.GenerateRaidProcGen(seed int64) → *GeneratedRaid
+//               bundle.GenerateRaidProcGenWith(seed int64, cfg ProcGenConfig) → *GeneratedRaid
 
 import (
 	"fmt"
@@ -21,22 +22,161 @@ import (
 	"warpedrealms/world"
 )
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Config ───────────────────────────────────────────────────────────────────
 
-const (
-	pgGW    = 800 // grid width  in blocks
-	pgGH    = 200 // grid height in blocks
-	pgBlock = 16  // pixels per block
+// PlayerPhysicsConfig describes the player size and jump capability used when
+// computing platform spacing.  All values are in pixels.
+//
+// Default player collider (from assets_manifest.json): 24 × 72 px.
+// Design size the user declared: 1.5 × 3 blocks = 24 × 48 px.
+// Max jump height = JumpSpeed² / (2 × Gravity).
+type PlayerPhysicsConfig struct {
+	// Collider size in pixels (width × height).  Used to validate clearances.
+	ColliderW float64 // default 24 px  (1.5 blocks)
+	ColliderH float64 // default 48 px  (3 blocks)
 
-	pgLocW = pgGW * pgBlock // 12 800 px
-	pgLocH = pgGH * pgBlock //  3 200 px
+	// Jump physics matching shared/sim.go MovementConfig.
+	JumpSpeed float64 // px/s initial upward velocity (default 735)
+	Gravity   float64 // px/s² downward acceleration   (default 2050)
 
-	pgRooms   = 6 // locations per session
-	pgMinPort = 3
-	pgMaxPort = 5
+	// MaxDropBlocks is the maximum safe drop height in real grid-blocks.
+	// Platforms further apart than this should not be the only route downward.
+	MaxDropBlocks int // default 15  (= ~240 px, comfortable free-fall)
+}
 
-	pgNodesDir = "gamedata/nodes"
-)
+// MaxJumpPx returns the theoretical maximum upward jump height in pixels.
+func (p PlayerPhysicsConfig) MaxJumpPx() float64 {
+	if p.Gravity <= 0 {
+		return 0
+	}
+	return (p.JumpSpeed * p.JumpSpeed) / (2 * p.Gravity)
+}
+
+// RiftConfig controls how many transient rifts are generated per room.
+// Rifts are one-way portals with finite capacity; they carry no reveal zone.
+type RiftConfig struct {
+	RedPerRoom   int // capacity-5 rifts per room (default 1)
+	BluePerRoom  int // capacity-2 rifts per room (default 2)
+	GreenPerRoom int // capacity-1 rifts per room (default 3)
+}
+
+// ProcGenConfig holds all tunable parameters for the procedural generator.
+// Zero values fall back to the defaults in DefaultProcGenConfig.
+type ProcGenConfig struct {
+	// Location dimensions in blocks (pixel size = blocks × 16).
+	GridW int // default 600
+	GridH int // default 300
+
+	// Session graph.
+	NumRooms   int // locations per session (default 6)
+	MinPortals int // portals per room, min (default 4)
+	MaxPortals int // portals per room, max (default 7)
+	// ExtraEdges is the number of shortcuts added on top of the spanning tree.
+	// -1 means random 1-2.
+	ExtraEdges int // default -1
+
+	// Platform scatter density added after node assembly: 0.0 = none, 1.0 = max.
+	// Applied as a fraction of the grid columns that get an extra stepping stone.
+	Density float64 // default 0.9
+
+	// Player physics used to compute socket jump-compatibility thresholds.
+	// If zero-value, DefaultPlayerPhysics is used.
+	Player PlayerPhysicsConfig
+
+	// Rifts controls the transient inter-room portal density.
+	Rifts RiftConfig
+
+	NodesDir string // path to node JSON files (default "gamedata/nodes")
+}
+
+// DefaultPlayerPhysics matches the declared design size (1.5×4 blocks) and
+// the physics constants from shared/sim.go (default class).
+var DefaultPlayerPhysics = PlayerPhysicsConfig{
+	ColliderW:     24,  // 1.5 blocks × 16 px
+	ColliderH:     64,  // 4 blocks × 16 px
+	JumpSpeed:     735, // px/s  (from sim.go default class)
+	Gravity:       2050, // px/s²
+	MaxDropBlocks: 15,
+}
+
+// DefaultProcGenConfig is the baseline configuration used by GenerateRaidProcGen.
+var DefaultProcGenConfig = ProcGenConfig{
+	GridW:      600,
+	GridH:      300,
+	NumRooms:   6,
+	MinPortals: 15,
+	MaxPortals: 20,
+	ExtraEdges: -1,
+	Density:    0.5,
+	Player:     DefaultPlayerPhysics,
+	Rifts: RiftConfig{
+		RedPerRoom:   12,
+		BluePerRoom:  8,
+		GreenPerRoom: 6,
+	},
+	NodesDir: "gamedata/nodes",
+}
+
+// fill replaces zero-value fields with defaults.
+func (c ProcGenConfig) fill() ProcGenConfig {
+	d := DefaultProcGenConfig
+	if c.GridW <= 0 {
+		c.GridW = d.GridW
+	}
+	if c.GridH <= 0 {
+		c.GridH = d.GridH
+	}
+	if c.NumRooms <= 0 {
+		c.NumRooms = d.NumRooms
+	}
+	if c.MinPortals <= 0 {
+		c.MinPortals = d.MinPortals
+	}
+	if c.MaxPortals <= 0 {
+		c.MaxPortals = d.MaxPortals
+	}
+	if c.ExtraEdges == 0 {
+		c.ExtraEdges = d.ExtraEdges
+	}
+	if c.Density == 0 {
+		c.Density = d.Density
+	}
+	if c.Player.JumpSpeed == 0 {
+		c.Player = d.Player
+	}
+	if c.Rifts.RedPerRoom == 0 && c.Rifts.BluePerRoom == 0 && c.Rifts.GreenPerRoom == 0 {
+		c.Rifts = d.Rifts
+	}
+	if c.NodesDir == "" {
+		c.NodesDir = d.NodesDir
+	}
+	return c
+}
+
+// nodeSpaceJumpUp returns the max upward jump in node-space units,
+// derived from player physics and the Y-scale factor (gridH / naNodeH).
+// Used by the assembler for socket compatibility.
+func (c ProcGenConfig) nodeSpaceJumpUp(naNodeH int) int {
+	// px per node-unit = (gridH / naNodeH) * blockPx
+	pxPerUnit := float64(c.GridH) / float64(naNodeH) * 16.0
+	maxJump := c.Player.MaxJumpPx()
+	units := int(maxJump / pxPerUnit)
+	if units < 1 {
+		units = 1
+	}
+	return units
+}
+
+// nodeSpaceDropDown returns the max safe drop in node-space units.
+func (c ProcGenConfig) nodeSpaceDropDown(naNodeH int) int {
+	pxPerUnit := float64(c.GridH) / float64(naNodeH) * 16.0
+	maxDrop := float64(c.Player.MaxDropBlocks) * 16.0
+	units := int(maxDrop / pxPerUnit)
+	if units < 1 {
+		units = 1
+	}
+	return units
+}
 
 // ─── Biome ────────────────────────────────────────────────────────────────────
 
@@ -53,7 +193,7 @@ type pgPortal struct {
 type pgLocation struct {
 	biome   string
 	portals []pgPortal
-	spawn   shared.Vec2       // pixel coords of player spawn
+	spawn   shared.Vec2 // pixel coords of player spawn
 	level   world.LDtkWriteLevel
 }
 
@@ -63,39 +203,47 @@ type pgEdge struct {
 }
 
 type pgGraph struct {
-	biomes [pgRooms]string
-	locs   [pgRooms]*pgLocation
+	cfg    ProcGenConfig
+	biomes []string
+	locs   []*pgLocation
 	edges  []pgEdge
 }
 
-// ─── Public entry point ───────────────────────────────────────────────────────
+// ─── Public entry points ──────────────────────────────────────────────────────
 
-// GenerateRaidProcGen creates a full procedural session:
-//  1. Ensures node JSON files exist in gamedata/nodes/.
-//  2. Loads nodes and assembles 6 biome-flavoured locations.
+// GenerateRaidProcGen creates a full procedural session with default config.
+func (b *Bundle) GenerateRaidProcGen(seed int64) (*GeneratedRaid, error) {
+	return b.GenerateRaidProcGenWith(seed, DefaultProcGenConfig)
+}
+
+// GenerateRaidProcGenWith creates a full procedural session with custom config.
+//  1. Ensures node JSON files exist in cfg.NodesDir.
+//  2. Loads nodes and assembles NumRooms biome-flavoured locations.
 //  3. Builds a graph connecting them via portals.
 //  4. Writes a LDtk session file to gamedata/sessions/.
 //  5. Loads it back and builds a *GeneratedRaid.
-func (b *Bundle) GenerateRaidProcGen(seed int64) (*GeneratedRaid, error) {
+func (b *Bundle) GenerateRaidProcGenWith(seed int64, cfg ProcGenConfig) (*GeneratedRaid, error) {
+	cfg = cfg.fill()
+
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
 	rng := rand.New(rand.NewSource(seed))
 
 	// Ensure node files are up to date.
-	if err := EnsureNodes(pgNodesDir); err != nil {
+	if err := EnsureNodes(cfg.NodesDir); err != nil {
 		return nil, fmt.Errorf("procgen ensureNodes: %w", err)
 	}
 
-	nodes, err := LoadNodes(pgNodesDir)
+	nodes, err := LoadNodes(cfg.NodesDir)
 	if err != nil {
 		return nil, fmt.Errorf("procgen loadNodes: %w", err)
 	}
 	if len(nodes) == 0 {
-		return nil, fmt.Errorf("procgen: no node definitions found in %s", pgNodesDir)
+		return nil, fmt.Errorf("procgen: no node definitions found in %s", cfg.NodesDir)
 	}
 
-	graph := pgBuildGraph(rng, nodes)
+	graph := pgBuildGraph(rng, nodes, cfg)
 
 	// Write session LDtk.
 	if err := os.MkdirAll("gamedata/sessions", 0o755); err != nil {
@@ -118,17 +266,26 @@ func (b *Bundle) GenerateRaidProcGen(seed int64) (*GeneratedRaid, error) {
 	}
 	raid.Layout.Seed = seed
 
+	// Override player spawns with generated spread points so each player in
+	// a multi-player session gets a distinct starting position.
+	firstLvl := graph.locs[0].level
+	raid.PlayerSpawns = pgGenerateSpawnPoints(firstLvl, cfg)
+	if len(raid.PlayerSpawns) > 0 {
+		raid.PlayerSpawn = raid.PlayerSpawns[0]
+		raid.Layout.PlayerSpawns = raid.PlayerSpawns
+	}
+
 	// Annotate rooms with biome and wire the background-room chain.
 	// BelowRoomID makes each room display the next room as its background,
 	// which is the core visual feature: you see another sublocation behind you.
+	n := cfg.NumRooms
 	for i := range raid.Layout.Rooms {
-		if i < pgRooms {
+		if i < n {
 			bio := graph.biomes[i]
 			raid.Layout.Rooms[i].Biome = bio
-			raid.Layout.Rooms[i].BackgroundID = "cave" // fallback to existing bg
-			raid.Layout.Rooms[i].TileStyleID = ""      // no tile style — renders solid rects
-			// Chain: room i shows room (i+1) in the background.
-			if i+1 < pgRooms {
+			raid.Layout.Rooms[i].BackgroundID = "cave"
+			raid.Layout.Rooms[i].TileStyleID = ""
+			if i+1 < n {
 				raid.Layout.Rooms[i].BelowRoomID = raid.Layout.Rooms[i+1].ID
 				raid.Layout.Rooms[i+1].AboveRoomID = raid.Layout.Rooms[i].ID
 			}
@@ -139,27 +296,30 @@ func (b *Bundle) GenerateRaidProcGen(seed int64) (*GeneratedRaid, error) {
 
 // ─── Graph construction ───────────────────────────────────────────────────────
 
-func pgBuildGraph(rng *rand.Rand, nodes []NodeDef) *pgGraph {
-	g := &pgGraph{}
+func pgBuildGraph(rng *rand.Rand, nodes []NodeDef, cfg ProcGenConfig) *pgGraph {
+	n := cfg.NumRooms
+	g := &pgGraph{
+		cfg:    cfg,
+		biomes: make([]string, n),
+		locs:   make([]*pgLocation, n),
+	}
 
-	// Two of each biome in shuffled order.
-	pool := []string{
-		pgBiomeNames[0], pgBiomeNames[0],
-		pgBiomeNames[1], pgBiomeNames[1],
-		pgBiomeNames[2], pgBiomeNames[2],
+	// Two of each biome repeated, shuffled.
+	pool := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		pool = append(pool, pgBiomeNames[i%len(pgBiomeNames)])
 	}
 	rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
-	copy(g.biomes[:], pool)
+	copy(g.biomes, pool)
 
-	// Generate all locations (each gets its own RNG stream so biome variation
-	// is independent of graph wiring).
-	for i := 0; i < pgRooms; i++ {
+	// Generate all locations.
+	for i := 0; i < n; i++ {
 		locRNG := rand.New(rand.NewSource(rng.Int63()))
 		id := fmt.Sprintf("room_%02d", i+1)
-		lvl := AssembleLocation(locRNG, nodes, g.biomes[i], id)
-		nPorts := pgMinPort + rng.Intn(pgMaxPort-pgMinPort+1)
-		portals := pgPlacePortals(locRNG, lvl, nPorts)
-		spawn := pgPickSpawnFromLevel(lvl)
+		lvl := AssembleLocation(locRNG, nodes, g.biomes[i], id, cfg)
+		nPorts := cfg.MinPortals + rng.Intn(cfg.MaxPortals-cfg.MinPortals+1)
+		portals := pgPlacePortals(locRNG, lvl, nPorts, cfg)
+		spawn := pgPickSpawnFromLevel(lvl, cfg)
 		g.locs[i] = &pgLocation{
 			biome:   g.biomes[i],
 			portals: portals,
@@ -170,7 +330,10 @@ func pgBuildGraph(rng *rand.Rand, nodes []NodeDef) *pgGraph {
 
 	// Spanning tree (Prim-style from node 0).
 	inTree := []int{0}
-	pending := []int{1, 2, 3, 4, 5}
+	pending := make([]int, n-1)
+	for i := range pending {
+		pending[i] = i + 1
+	}
 	for len(pending) > 0 {
 		ri := rng.Intn(len(pending))
 		b := pending[ri]
@@ -180,12 +343,15 @@ func pgBuildGraph(rng *rand.Rand, nodes []NodeDef) *pgGraph {
 		inTree = append(inTree, b)
 	}
 
-	// Add 1–2 extra edges for loops / shortcuts.
+	// Add extra edges for loops / shortcuts.
 	extras := 1 + rng.Intn(2)
+	if cfg.ExtraEdges >= 0 {
+		extras = cfg.ExtraEdges
+	}
 	for e := 0; e < extras; e++ {
 		for try := 0; try < 40; try++ {
-			a := rng.Intn(pgRooms)
-			b := rng.Intn(pgRooms)
+			a := rng.Intn(n)
+			b := rng.Intn(n)
 			if a == b || pgEdgeExists(g.edges, a, b) {
 				continue
 			}
@@ -243,11 +409,9 @@ func pgFreePortal(loc *pgLocation, edges []pgEdge, nodeIdx int) int {
 // ─── LDtk session writer ──────────────────────────────────────────────────────
 
 func pgWriteSession(g *pgGraph, path string) error {
-	levels := make([]world.LDtkWriteLevel, pgRooms)
+	levels := make([]world.LDtkWriteLevel, len(g.locs))
 	for i, loc := range g.locs {
 		levels[i] = loc.level
-		// Player spawn is already embedded in loc.level.Entities by AssembleLocation
-		// (from the node's own Player entity).  Do NOT add a second spawn here.
 	}
 
 	// Wire portal pairs from graph edges.
@@ -257,7 +421,7 @@ func pgWriteSession(g *pgGraph, path string) error {
 		ap := g.locs[edge.a].portals[edge.portA]
 		bp := g.locs[edge.b].portals[edge.portB]
 
-		// Portal in room A → teleports to room B.
+		// JumpLink A → B
 		levels[edge.a].Entities = append(levels[edge.a].Entities, world.LDtkWriteEntity{
 			Identifier: "JumpLink",
 			PX:         int(ap.area.X),
@@ -271,8 +435,10 @@ func pgWriteSession(g *pgGraph, path string) error {
 				{Key: "arrival_y", Value: bp.arrival.Y},
 			},
 		})
+		// RevealZone A (shows room B behind the portal)
+		levels[edge.a].Entities = append(levels[edge.a].Entities, pgMakeRevealZone(ap.area, bRoomID))
 
-		// Portal in room B → teleports to room A.
+		// JumpLink B → A
 		levels[edge.b].Entities = append(levels[edge.b].Entities, world.LDtkWriteEntity{
 			Identifier: "JumpLink",
 			PX:         int(bp.area.X),
@@ -286,25 +452,103 @@ func pgWriteSession(g *pgGraph, path string) error {
 				{Key: "arrival_y", Value: ap.arrival.Y},
 			},
 		})
+		// RevealZone B (shows room A behind the portal)
+		levels[edge.b].Entities = append(levels[edge.b].Entities, pgMakeRevealZone(bp.area, aRoomID))
+	}
+
+	// Scatter rifts across all rooms.
+	cfg := g.cfg
+	n := len(g.locs)
+	for i, loc := range g.locs {
+		lvl := loc.level
+		// Each rift goes to a randomly chosen other room.
+		riftRNG := rand.New(rand.NewSource(int64(i*7919 + 42)))
+
+		pgScatterRifts(&levels[i], lvl, cfg.Rifts.RedPerRoom, "red", n, i, riftRNG)
+		pgScatterRifts(&levels[i], lvl, cfg.Rifts.BluePerRoom, "blue", n, i, riftRNG)
+		pgScatterRifts(&levels[i], lvl, cfg.Rifts.GreenPerRoom, "green", n, i, riftRNG)
 	}
 
 	return world.WriteLDtkFile(path, levels)
 }
 
-// ─── Portal placement (from assembled level) ──────────────────────────────────
+// pgMakeRevealZone creates a RevealZone entity placed just above/around a portal area.
+// The reveal zone is wider than the portal itself so the player sees the target
+// room's background while approaching.
+func pgMakeRevealZone(portalArea shared.Rect, targetRoomID string) world.LDtkWriteEntity {
+	const revealPad = 80.0
+	rx := portalArea.X - revealPad
+	ry := portalArea.Y - revealPad
+	rw := portalArea.W + revealPad*2
+	rh := portalArea.H + revealPad*2
+	return world.LDtkWriteEntity{
+		Identifier: "RevealZone",
+		PX:         int(rx),
+		PY:         int(ry),
+		W:          int(rw),
+		H:          int(rh),
+		Fields: []world.LDtkWriteField{
+			{Key: "target", Value: targetRoomID},
+		},
+	}
+}
 
-// pgPlacePortals chooses islands in the assembled level to host portals.
-// It scans the solid cells for clusters and picks spaced-out ones.
-func pgPlacePortals(rng *rand.Rand, lvl world.LDtkWriteLevel, count int) []pgPortal {
-	// Collect candidate X positions spaced across the level width.
-	stepX := (lvl.GridW * pgBlock) / (count + 1)
+// pgScatterRifts places count rifts of the given kind inside lvl, targeting
+// rooms other than selfIdx.
+func pgScatterRifts(wl *world.LDtkWriteLevel, lvl world.LDtkWriteLevel, count int, kind string, numRooms, selfIdx int, rng *rand.Rand) {
+	const block = 16
+	const riftW, riftH = 32, 48
+
+	for i := 0; i < count; i++ {
+		// Pick a random target room that is not this room.
+		targetIdx := rng.Intn(numRooms - 1)
+		if targetIdx >= selfIdx {
+			targetIdx++
+		}
+		targetRoom := fmt.Sprintf("room_%02d", targetIdx+1)
+
+		// Pick a random column in the middle two-thirds of the level.
+		lo := lvl.GridW / 6
+		hi := lvl.GridW * 5 / 6
+		if hi <= lo {
+			hi = lvl.GridW - 2
+		}
+		col := lo + rng.Intn(hi-lo)
+		surfaceY := pgFindSurface(lvl.SolidCells, col, lvl.GridW, lvl.GridH)
+		px := float64(col*block) - riftW/2
+		py := float64(surfaceY*block) - riftH
+
+		// Arrival in target room — just pick center.
+		arrX := float64(lvl.GridW*block) * 0.5
+		arrY := float64(surfaceY*block) - 100
+
+		wl.Entities = append(wl.Entities, world.LDtkWriteEntity{
+			Identifier: "Rift",
+			PX:         int(px),
+			PY:         int(py),
+			W:          riftW,
+			H:          riftH,
+			Fields: []world.LDtkWriteField{
+				{Key: "target", Value: targetRoom},
+				{Key: "kind", Value: kind},
+				{Key: "arrival_x", Value: arrX},
+				{Key: "arrival_y", Value: arrY},
+			},
+		})
+	}
+}
+
+// ─── Portal placement ─────────────────────────────────────────────────────────
+
+func pgPlacePortals(rng *rand.Rand, lvl world.LDtkWriteLevel, count int, cfg ProcGenConfig) []pgPortal {
+	const block = 16
+	stepX := (lvl.GridW * block) / (count + 1)
 	portals := make([]pgPortal, 0, count)
 
 	for i := 0; i < count; i++ {
 		cx := float64(stepX*(i+1)) + float64(rng.Intn(stepX/3)-(stepX/6))
-		// Find the topmost solid cell near this X.
-		surfaceY := pgFindSurface(lvl.SolidCells, int(cx)/pgBlock, lvl.GridW, lvl.GridH)
-		py := float64(surfaceY*pgBlock) - 72 // portal hovers above surface
+		surfaceY := pgFindSurface(lvl.SolidCells, int(cx)/block, lvl.GridW, lvl.GridH)
+		py := float64(surfaceY*block) - 72
 		if py < 0 {
 			py = 8
 		}
@@ -312,7 +556,7 @@ func pgPlacePortals(rng *rand.Rand, lvl world.LDtkWriteLevel, count int) []pgPor
 			area: shared.Rect{X: cx - 28, Y: py, W: 56, H: 56},
 			arrival: shared.Vec2{
 				X: cx,
-				Y: float64(surfaceY*pgBlock) - 120,
+				Y: float64(surfaceY*block) - 120,
 			},
 			label: pgPortalLabel(i),
 		})
@@ -321,15 +565,13 @@ func pgPlacePortals(rng *rand.Rand, lvl world.LDtkWriteLevel, count int) []pgPor
 }
 
 // pgFindSurface scans a column near colX and returns the Y block of the
-// highest solid cell (topmost solid = lowest Y value) that has open air above.
+// topmost solid cell that has open air above it.
 func pgFindSurface(cells [][2]int, colX, gridW, gridH int) int {
-	// Build column occupancy for nearby columns (±5 blocks).
 	occupied := map[[2]int]bool{}
 	for _, c := range cells {
 		occupied[c] = true
 	}
-
-	bestY := gridH - 4 // fallback: near bottom
+	bestY := gridH - 4
 	for dx := -5; dx <= 5; dx++ {
 		cx := colX + dx
 		if cx < 0 || cx >= gridW {
@@ -339,7 +581,6 @@ func pgFindSurface(cells [][2]int, colX, gridW, gridH int) int {
 			if !occupied[[2]int{cx, row}] {
 				continue
 			}
-			// Check that the row above is air.
 			if row > 0 && occupied[[2]int{cx, row - 1}] {
 				continue
 			}
@@ -352,14 +593,59 @@ func pgFindSurface(cells [][2]int, colX, gridW, gridH int) int {
 	return bestY
 }
 
-// pgPickSpawnFromLevel finds a good player spawn above the first solid surface
-// near the left edge of the assembled level.
-func pgPickSpawnFromLevel(lvl world.LDtkWriteLevel) shared.Vec2 {
-	surfaceY := pgFindSurface(lvl.SolidCells, pgGW/10, lvl.GridW, lvl.GridH)
+func pgPickSpawnFromLevel(lvl world.LDtkWriteLevel, cfg ProcGenConfig) shared.Vec2 {
+	const block = 16
+	colX := cfg.GridW / 10
+	surfaceY := pgFindSurface(lvl.SolidCells, colX, lvl.GridW, lvl.GridH)
 	return shared.Vec2{
-		X: float64(pgGW/10) * pgBlock,
-		Y: float64(surfaceY*pgBlock) - 110,
+		X: float64(colX) * block,
+		Y: float64(surfaceY*block) - 110,
 	}
+}
+
+// pgGenerateSpawnPoints scans the first location's solid cells and returns
+// N evenly-spaced spawn points along the top surface of the left portion of
+// the level.  N = cfg.NumRooms (one slot per expected player; more than enough
+// for typical session sizes).
+//
+// Each point is placed above the topmost solid cell in a column, at a height
+// that clears the player collider (cfg.Player.ColliderH pixels).
+func pgGenerateSpawnPoints(lvl world.LDtkWriteLevel, cfg ProcGenConfig) []shared.Vec2 {
+	const block = 16
+
+	// Scan the left third of the level for solid surface columns.
+	scanEnd := lvl.GridW / 3
+	if scanEnd < 20 {
+		scanEnd = lvl.GridW
+	}
+
+	n := cfg.NumRooms // one spawn per player slot
+	if n < 2 {
+		n = 2
+	}
+
+	// stride between spawn columns
+	stride := scanEnd / (n + 1)
+	if stride < 4 {
+		stride = 4
+	}
+
+	spawns := make([]shared.Vec2, 0, n)
+	for i := 0; i < n; i++ {
+		colX := stride * (i + 1)
+		surfaceY := pgFindSurface(lvl.SolidCells, colX, lvl.GridW, lvl.GridH)
+		// Place player feet at surfaceY, then lift by collider height + small margin.
+		clearancePx := cfg.Player.ColliderH + 8
+		py := float64(surfaceY*block) - clearancePx
+		if py < 0 {
+			py = 8
+		}
+		spawns = append(spawns, shared.Vec2{
+			X: float64(colX * block),
+			Y: py,
+		})
+	}
+	return spawns
 }
 
 func pgPortalLabel(index int) string {
