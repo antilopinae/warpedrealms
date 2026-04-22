@@ -1,13 +1,12 @@
 package content
 
-// procgen.go — node-based procedural session generator.
+// procgen.go — procedural session generator.
 //
 // Produces N locations per session connected as a graph (spanning tree +
-// extra edges).  Each location is assembled from pre-authored node files
-// stored in gamedata/nodes/ by combining compatible room chunks side-by-side.
+// optional extra edges).  Each location is assembled by sandwich_gen.go
+// using HK-style cave hubs (rooms + corridors + vertical ledges).
 //
-// Default location size: 600 × 300 blocks at 16 px/block = 9 600 × 4 800 px.
-// Style: Dead-Cells aerial — floating islands, open air, multiple paths.
+// Default location size: 200 × 150 blocks at 16 px/block = 3 200 × 2 400 px.
 //
 // Entry point:  bundle.GenerateRaidProcGen(seed int64) → *GeneratedRaid
 //               bundle.GenerateRaidProcGenWith(seed int64, cfg ProcGenConfig) → *GeneratedRaid
@@ -64,20 +63,20 @@ type RiftConfig struct {
 // Zero values fall back to the defaults in DefaultProcGenConfig.
 type ProcGenConfig struct {
 	// Location dimensions in blocks (pixel size = blocks × 16).
-	GridW int // default 600
-	GridH int // default 300
+	GridW int // default 200
+	GridH int // default 150
 
 	// Session graph.
-	NumRooms   int // locations per session (default 6)
+	NumRooms   int // locations per session (default 10)
 	MinPortals int // portals per room, min (default 4)
 	MaxPortals int // portals per room, max (default 7)
-	// ExtraEdges is the number of shortcuts added on top of the spanning tree.
+	// ExtraEdges is the number of shortcuts added on top of the base graph.
 	// -1 means random 1-2.
-	ExtraEdges int // default -1
+	ExtraEdges int // default 0
 
 	// Platform scatter density added after node assembly: 0.0 = none, 1.0 = max.
 	// Applied as a fraction of the grid columns that get an extra stepping stone.
-	Density float64 // default 0.9
+	Density float64 // default 0.5
 
 	// Player physics used to compute socket jump-compatibility thresholds.
 	// If zero-value, DefaultPlayerPhysics is used.
@@ -92,27 +91,27 @@ type ProcGenConfig struct {
 // DefaultPlayerPhysics matches the declared design size (1.5×4 blocks) and
 // the physics constants from shared/sim.go (default class).
 var DefaultPlayerPhysics = PlayerPhysicsConfig{
-	ColliderW:     24,  // 1.5 blocks × 16 px
-	ColliderH:     64,  // 4 blocks × 16 px
-	JumpSpeed:     735, // px/s  (from sim.go default class)
+	ColliderW:     24,   // 1.5 blocks × 16 px
+	ColliderH:     64,   // 4 blocks × 16 px
+	JumpSpeed:     735,  // px/s  (from sim.go default class)
 	Gravity:       2050, // px/s²
 	MaxDropBlocks: 15,
 }
 
 // DefaultProcGenConfig is the baseline configuration used by GenerateRaidProcGen.
 var DefaultProcGenConfig = ProcGenConfig{
-	GridW:      600,
-	GridH:      300,
-	NumRooms:   6,
-	MinPortals: 15,
-	MaxPortals: 20,
-	ExtraEdges: -1,
+	GridW:      200,
+	GridH:      150,
+	NumRooms:   shared.SessionRingTotalRooms,
+	MinPortals: 4,
+	MaxPortals: 7,
+	ExtraEdges: 0,
 	Density:    0.5,
 	Player:     DefaultPlayerPhysics,
 	Rifts: RiftConfig{
-		RedPerRoom:   12,
-		BluePerRoom:  8,
-		GreenPerRoom: 6,
+		RedPerRoom:   1,
+		BluePerRoom:  2,
+		GreenPerRoom: 3,
 	},
 	NodesDir: "gamedata/nodes",
 }
@@ -191,10 +190,12 @@ type pgPortal struct {
 }
 
 type pgLocation struct {
-	biome   string
-	portals []pgPortal
-	spawn   shared.Vec2 // pixel coords of player spawn
-	level   world.LDtkWriteLevel
+	biome     string
+	portals   []pgPortal
+	spawn     shared.Vec2 // pixel coords of player spawn
+	spawns    []shared.Vec2
+	backwalls []shared.Rect
+	level     world.LDtkWriteLevel
 }
 
 type pgEdge struct {
@@ -205,6 +206,7 @@ type pgEdge struct {
 type pgGraph struct {
 	cfg    ProcGenConfig
 	biomes []string
+	zones  []shared.RingZone
 	locs   []*pgLocation
 	edges  []pgEdge
 }
@@ -230,20 +232,7 @@ func (b *Bundle) GenerateRaidProcGenWith(seed int64, cfg ProcGenConfig) (*Genera
 	}
 	rng := rand.New(rand.NewSource(seed))
 
-	// Ensure node files are up to date.
-	if err := EnsureNodes(cfg.NodesDir); err != nil {
-		return nil, fmt.Errorf("procgen ensureNodes: %w", err)
-	}
-
-	nodes, err := LoadNodes(cfg.NodesDir)
-	if err != nil {
-		return nil, fmt.Errorf("procgen loadNodes: %w", err)
-	}
-	if len(nodes) == 0 {
-		return nil, fmt.Errorf("procgen: no node definitions found in %s", cfg.NodesDir)
-	}
-
-	graph := pgBuildGraph(rng, nodes, cfg)
+	graph := pgBuildGraph(rng, cfg)
 
 	// Write session LDtk.
 	if err := os.MkdirAll("gamedata/sessions", 0o755); err != nil {
@@ -266,13 +255,25 @@ func (b *Bundle) GenerateRaidProcGenWith(seed int64, cfg ProcGenConfig) (*Genera
 	}
 	raid.Layout.Seed = seed
 
-	// Override player spawns with generated spread points so each player in
-	// a multi-player session gets a distinct starting position.
-	firstLvl := graph.locs[0].level
-	raid.PlayerSpawns = pgGenerateSpawnPoints(firstLvl, cfg)
+	// Override player spawns with inlet-based points from the first location.
+	if len(graph.locs) > 0 {
+		raid.PlayerSpawns = append([]shared.Vec2(nil), graph.locs[0].spawns...)
+	}
 	if len(raid.PlayerSpawns) > 0 {
 		raid.PlayerSpawn = raid.PlayerSpawns[0]
 		raid.Layout.PlayerSpawns = raid.PlayerSpawns
+	} else if len(graph.locs) > 0 {
+		raid.PlayerSpawn = graph.locs[0].spawn
+		raid.PlayerSpawns = []shared.Vec2{raid.PlayerSpawn}
+		raid.Layout.PlayerSpawns = raid.PlayerSpawns
+	}
+
+	// Backwalls are generated directly by sandwich_gen and carried in runtime
+	// room state. They are data-only in this stage (no physics/render usage).
+	backwallsByRoomID := make(map[string][]shared.Rect, len(graph.locs))
+	for i, loc := range graph.locs {
+		roomID := fmt.Sprintf("room-%02d", i+1)
+		backwallsByRoomID[roomID] = append([]shared.Rect(nil), loc.backwalls...)
 	}
 
 	// Annotate rooms with biome and wire the background-room chain.
@@ -281,6 +282,9 @@ func (b *Bundle) GenerateRaidProcGenWith(seed int64, cfg ProcGenConfig) (*Genera
 	n := cfg.NumRooms
 	for i := range raid.Layout.Rooms {
 		if i < n {
+			if backwalls, ok := backwallsByRoomID[raid.Layout.Rooms[i].ID]; ok {
+				raid.Layout.Rooms[i].Backwalls = append([]shared.Rect(nil), backwalls...)
+			}
 			bio := graph.biomes[i]
 			raid.Layout.Rooms[i].Biome = bio
 			raid.Layout.Rooms[i].BackgroundID = "cave"
@@ -296,56 +300,73 @@ func (b *Bundle) GenerateRaidProcGenWith(seed int64, cfg ProcGenConfig) (*Genera
 
 // ─── Graph construction ───────────────────────────────────────────────────────
 
-func pgBuildGraph(rng *rand.Rand, nodes []NodeDef, cfg ProcGenConfig) *pgGraph {
+func pgBuildGraph(rng *rand.Rand, cfg ProcGenConfig) *pgGraph {
 	n := cfg.NumRooms
 	g := &pgGraph{
 		cfg:    cfg,
 		biomes: make([]string, n),
+		zones:  make([]shared.RingZone, n),
 		locs:   make([]*pgLocation, n),
 	}
 
-	// Two of each biome repeated, shuffled.
-	pool := make([]string, 0, n)
+	// Assign room risk belts + biomes first so generation can follow session depth.
 	for i := 0; i < n; i++ {
-		pool = append(pool, pgBiomeNames[i%len(pgBiomeNames)])
+		zone := shared.RingZoneForRoom(i, n)
+		g.zones[i] = zone
+		g.biomes[i] = pgBiomeForZone(rng, zone)
 	}
-	rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
-	copy(g.biomes, pool)
 
 	// Generate all locations.
 	for i := 0; i < n; i++ {
 		locRNG := rand.New(rand.NewSource(rng.Int63()))
 		id := fmt.Sprintf("room_%02d", i+1)
-		lvl := AssembleLocation(locRNG, nodes, g.biomes[i], id, cfg)
+		sandwich := GenerateSandwichLocation(locRNG, id, cfg)
+		lvl := sandwich.Level
 		nPorts := cfg.MinPortals + rng.Intn(cfg.MaxPortals-cfg.MinPortals+1)
 		portals := pgPlacePortals(locRNG, lvl, nPorts, cfg)
-		spawn := pgPickSpawnFromLevel(lvl, cfg)
+		spawn := sandwich.PrimarySpawn
+		if spawn == (shared.Vec2{}) {
+			spawn = pgPickSpawnFromLevel(lvl, cfg)
+		}
+		spawns := append([]shared.Vec2(nil), sandwich.SpawnPoints...)
+		backwalls := pgGridRectsToPixels(sandwich.BackwallRects, lvl.GridSize)
 		g.locs[i] = &pgLocation{
-			biome:   g.biomes[i],
-			portals: portals,
-			spawn:   spawn,
-			level:   lvl,
+			biome:     g.biomes[i],
+			portals:   portals,
+			spawn:     spawn,
+			spawns:    spawns,
+			backwalls: backwalls,
+			level:     lvl,
 		}
 	}
 
-	// Spanning tree (Prim-style from node 0).
-	inTree := []int{0}
-	pending := make([]int, n-1)
-	for i := range pending {
-		pending[i] = i + 1
-	}
-	for len(pending) > 0 {
-		ri := rng.Intn(len(pending))
-		b := pending[ri]
-		pending = append(pending[:ri], pending[ri+1:]...)
-		a := inTree[rng.Intn(len(inTree))]
-		g.edges = append(g.edges, pgMakeEdge(g, a, b))
-		inTree = append(inTree, b)
+	// Canonical 10-room raid follows ring hierarchy to the center:
+	// green(4) -> red(2) -> black(3) -> throne(1).
+	if n == shared.SessionRingTotalRooms {
+		pgBuildCanonicalRingEdges(g)
+	} else {
+		// Fallback for custom room counts: connected spanning tree.
+		inTree := []int{0}
+		pending := make([]int, n-1)
+		for i := range pending {
+			pending[i] = i + 1
+		}
+		for len(pending) > 0 {
+			ri := rng.Intn(len(pending))
+			b := pending[ri]
+			pending = append(pending[:ri], pending[ri+1:]...)
+			a := inTree[rng.Intn(len(inTree))]
+			g.edges = append(g.edges, pgMakeEdge(g, a, b))
+			inTree = append(inTree, b)
+		}
 	}
 
-	// Add extra edges for loops / shortcuts.
-	extras := 1 + rng.Intn(2)
-	if cfg.ExtraEdges >= 0 {
+	// Optional extra edges for loops / shortcuts.
+	extras := 0
+	switch {
+	case cfg.ExtraEdges == -1:
+		extras = 1 + rng.Intn(2)
+	case cfg.ExtraEdges > 0:
 		extras = cfg.ExtraEdges
 	}
 	for e := 0; e < extras; e++ {
@@ -365,6 +386,72 @@ func pgBuildGraph(rng *rand.Rand, nodes []NodeDef, cfg ProcGenConfig) *pgGraph {
 		}
 	}
 	return g
+}
+
+func pgBuildCanonicalRingEdges(g *pgGraph) {
+	// Green -> Red
+	pgAddEdge(g, 0, 4)
+	pgAddEdge(g, 1, 4)
+	pgAddEdge(g, 2, 5)
+	pgAddEdge(g, 3, 5)
+
+	// Red -> Black
+	pgAddEdge(g, 4, 6)
+	pgAddEdge(g, 4, 7)
+	pgAddEdge(g, 5, 7)
+	pgAddEdge(g, 5, 8)
+
+	// Black -> Throne
+	pgAddEdge(g, 6, 9)
+	pgAddEdge(g, 7, 9)
+	pgAddEdge(g, 8, 9)
+}
+
+func pgAddEdge(g *pgGraph, a, b int) {
+	if a < 0 || b < 0 || a >= len(g.locs) || b >= len(g.locs) || a == b {
+		return
+	}
+	if pgEdgeExists(g.edges, a, b) {
+		return
+	}
+	g.edges = append(g.edges, pgMakeEdge(g, a, b))
+}
+
+func pgBiomeForZone(rng *rand.Rand, zone shared.RingZone) string {
+	switch zone {
+	case shared.RingZoneGreen:
+		return "forest"
+	case shared.RingZoneRed:
+		options := []string{"crystal", "ruins"}
+		return options[rng.Intn(len(options))]
+	case shared.RingZoneBlack:
+		options := []string{"ruins", "crystal"}
+		return options[rng.Intn(len(options))]
+	case shared.RingZoneThrone:
+		return "ruins"
+	default:
+		return pgBiomeNames[rng.Intn(len(pgBiomeNames))]
+	}
+}
+
+func pgGridRectsToPixels(rects []shared.Rect, gridSize int) []shared.Rect {
+	if len(rects) == 0 {
+		return nil
+	}
+	if gridSize <= 0 {
+		gridSize = 16
+	}
+	scale := float64(gridSize)
+	out := make([]shared.Rect, 0, len(rects))
+	for _, r := range rects {
+		out = append(out, shared.Rect{
+			X: r.X * scale,
+			Y: r.Y * scale,
+			W: r.W * scale,
+			H: r.H * scale,
+		})
+	}
+	return out
 }
 
 func pgMakeEdge(g *pgGraph, a, b int) pgEdge {

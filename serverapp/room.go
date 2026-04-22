@@ -17,6 +17,7 @@ import (
 type Peer struct {
 	playerID   string
 	playerName string
+	classID    string
 	conn       *websocket.Conn
 	send       chan shared.ServerMessage
 	room       *RaidRoom
@@ -37,14 +38,16 @@ type RaidRoom struct {
 	inputCh   chan inputRequest
 	summaryCh chan chan shared.RaidSummary
 
-	players      map[string]*serverPlayer
-	peers        map[string]*Peer
-	npcs         map[string]*serverNPC
-	loot         map[string]*lootPickup
-	roomSolids   map[string][]shared.Rect // roomID → its own solid rects
-	exitRotation []shared.ExitState
-	spawnIndex   int
-	nextLootID   int
+	players       map[string]*serverPlayer
+	peers         map[string]*Peer
+	npcs          map[string]*serverNPC
+	loot          map[string]*lootPickup
+	roomSolids    map[string][]shared.Rect // roomID → its own solid rects
+	exitRotation  []shared.ExitState
+	spawnRotation []shared.Vec2
+	exitCursor    int
+	spawnCursor   int
+	nextLootID    int
 
 	tick      uint64
 	createdAt time.Time
@@ -219,9 +222,9 @@ func (r *RaidRoom) handleJoin(peer *Peer) error {
 		if len(r.players) >= r.maxPlayers {
 			return fmt.Errorf("raid is full")
 		}
-		profile, ok := r.bundle.Manifest.Profile("player_knight")
-		if !ok {
-			return fmt.Errorf("class profile missing")
+		classDef, profile, err := r.resolveJoinLoadout(peer.classID)
+		if err != nil {
+			return err
 		}
 		state := profile.DefaultState()
 		state.ID = peer.playerID
@@ -231,6 +234,7 @@ func (r *RaidRoom) handleJoin(peer *Peer) error {
 		state.AnimationStartedAt = r.serverTime()
 		exit := r.assignExitForJoin()
 		player = &serverPlayer{
+			class:        classDef,
 			profile:      profile,
 			state:        state,
 			status:       shared.PlayerRaidStatusWaiting,
@@ -242,6 +246,9 @@ func (r *RaidRoom) handleJoin(peer *Peer) error {
 		}
 		r.players[peer.playerID] = player
 	}
+	if err := r.ensurePlayerLoadout(player, peer.classID); err != nil {
+		return err
+	}
 
 	r.peers[peer.playerID] = peer
 	peer.room = r
@@ -250,6 +257,7 @@ func (r *RaidRoom) handleJoin(peer *Peer) error {
 		Welcome: &shared.WelcomeMessage{
 			PlayerID:              peer.playerID,
 			PlayerName:            peer.playerName,
+			ClassID:               player.state.ClassID,
 			RaidID:                r.id,
 			RaidName:              r.name,
 			ContentVersion:        r.bundle.Manifest.Version,
@@ -289,9 +297,166 @@ func (r *RaidRoom) handleInput(request inputRequest) {
 	}
 }
 
+func (r *RaidRoom) resolveJoinLoadout(requestedClassID string) (content.ClassDefinition, content.AssetProfile, error) {
+	manifest := r.bundle.Manifest
+	candidateIDs := make([]string, 0, len(manifest.Classes)+1)
+	if requestedClassID != "" {
+		candidateIDs = append(candidateIDs, requestedClassID)
+	}
+	if defaultClass, ok := manifest.DefaultPlayerClass(); ok && defaultClass.ID != "" {
+		duplicate := false
+		for _, id := range candidateIDs {
+			if id == defaultClass.ID {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			candidateIDs = append(candidateIDs, defaultClass.ID)
+		}
+	}
+	for _, classDef := range manifest.Classes {
+		duplicate := false
+		for _, id := range candidateIDs {
+			if id == classDef.ID {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			candidateIDs = append(candidateIDs, classDef.ID)
+		}
+	}
+
+	for _, classID := range candidateIDs {
+		classDef, ok := manifest.Class(classID)
+		if !ok {
+			continue
+		}
+		profile, ok := manifest.Profile(classDef.ProfileID)
+		if !ok {
+			continue
+		}
+		if profile.ClassID == "" {
+			profile.ClassID = classDef.ID
+		}
+		return classDef, profile, nil
+	}
+	return content.ClassDefinition{}, content.AssetProfile{}, fmt.Errorf("player class profile missing")
+}
+
+func (r *RaidRoom) ensureAllPlayerLoadouts() {
+	for _, player := range r.players {
+		_ = r.ensurePlayerLoadout(player, "")
+	}
+}
+
+func (r *RaidRoom) ensurePlayerLoadout(player *serverPlayer, preferredClassID string) error {
+	if player == nil {
+		return nil
+	}
+	if player.cooldowns == nil {
+		player.cooldowns = make(map[string]float64, 8)
+	}
+
+	var (
+		classDef content.ClassDefinition
+		profile  content.AssetProfile
+		ok       bool
+	)
+
+	switch {
+	case player.class.ID != "":
+		classDef = player.class
+	case player.state.ClassID != "":
+		classDef, ok = r.bundle.Manifest.Class(player.state.ClassID)
+	case player.profile.ClassID != "":
+		classDef, ok = r.bundle.Manifest.Class(player.profile.ClassID)
+	case player.state.ProfileID != "":
+		classDef, ok = r.bundle.Manifest.ClassByProfileID(player.state.ProfileID)
+	case player.profile.ID != "":
+		classDef, ok = r.bundle.Manifest.ClassByProfileID(player.profile.ID)
+	case preferredClassID != "":
+		classDef, ok = r.bundle.Manifest.Class(preferredClassID)
+	}
+	if classDef.ID == "" && ok {
+		ok = false
+	}
+	if !ok && classDef.ID == "" {
+		var err error
+		classDef, profile, err = r.resolveJoinLoadout(preferredClassID)
+		if err != nil {
+			return err
+		}
+	}
+
+	if profile.ID == "" {
+		switch {
+		case classDef.ProfileID != "":
+			profile, ok = r.bundle.Manifest.Profile(classDef.ProfileID)
+		case player.profile.ID != "":
+			profile, ok = r.bundle.Manifest.Profile(player.profile.ID)
+		case player.state.ProfileID != "":
+			profile, ok = r.bundle.Manifest.Profile(player.state.ProfileID)
+		}
+		if !ok {
+			var err error
+			classDef, profile, err = r.resolveJoinLoadout(preferredClassID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if profile.ClassID == "" {
+		profile.ClassID = classDef.ID
+	}
+
+	player.class = classDef
+	player.profile = profile
+
+	defaultState := profile.DefaultState()
+	player.state.ClassID = classDef.ID
+	player.state.ProfileID = profile.ID
+	if player.state.Kind == "" {
+		player.state.Kind = defaultState.Kind
+	}
+	if player.state.Faction == "" {
+		player.state.Faction = defaultState.Faction
+	}
+	if player.state.FamilyID == "" {
+		player.state.FamilyID = defaultState.FamilyID
+	}
+	if player.state.Scale == 0 {
+		player.state.Scale = defaultState.Scale
+	}
+	if player.state.SpriteSize == (shared.Vec2{}) {
+		player.state.SpriteSize = defaultState.SpriteSize
+	}
+	if player.state.SpriteOffset == (shared.Vec2{}) {
+		player.state.SpriteOffset = defaultState.SpriteOffset
+	}
+	if player.state.Collider.W == 0 || player.state.Collider.H == 0 {
+		player.state.Collider = defaultState.Collider
+	}
+	if player.state.Hurtbox.W == 0 || player.state.Hurtbox.H == 0 {
+		player.state.Hurtbox = defaultState.Hurtbox
+	}
+	if player.state.InteractionBox.W == 0 || player.state.InteractionBox.H == 0 {
+		player.state.InteractionBox = defaultState.InteractionBox
+	}
+	if player.state.MaxHP == 0 {
+		player.state.MaxHP = defaultState.MaxHP
+		if player.state.HP <= 0 {
+			player.state.HP = defaultState.MaxHP
+		}
+	}
+	return nil
+}
+
 func (r *RaidRoom) simulateTick() {
 	r.tick++
 	now := r.serverTime()
+	r.ensureAllPlayerLoadouts()
 
 	if r.phase == shared.RaidPhaseWaiting && len(r.players) > 0 {
 		r.phase = shared.RaidPhaseActive
@@ -353,6 +518,9 @@ func (r *RaidRoom) simulateTick() {
 }
 
 func (r *RaidRoom) simulatePlayer(player *serverPlayer, input shared.InputCommand, now float64) {
+	if err := r.ensurePlayerLoadout(player, ""); err != nil {
+		return
+	}
 	if player.state.Travel == nil || !player.state.Travel.Active {
 		shared.SimulatePlayer(&player.state, input, r.solidsForRoom(player.state.RoomID))
 		// Do NOT call roomIDForPosition here: procgen rooms all share the same
@@ -371,17 +539,25 @@ func (r *RaidRoom) simulatePlayer(player *serverPlayer, input shared.InputComman
 		}
 	}
 	if input.PrimaryAttack {
-		r.useAbility(player, player.class.Skills[0], shared.NextAttackAnimation(player.state, player.attackCombo), now)
-		player.attackCombo++
+		if ability, ok := classSkill(player.class, 0); ok {
+			r.useAbility(player, ability, shared.NextAttackAnimation(player.state, player.attackCombo), now)
+			player.attackCombo++
+		}
 	}
 	if input.Skill1 {
-		r.useAbility(player, player.class.Skills[1], shared.AnimationSkill1, now)
+		if ability, ok := classSkill(player.class, 1); ok {
+			r.useAbility(player, ability, shared.AnimationSkill1, now)
+		}
 	}
 	if input.Skill2 {
-		r.useAbility(player, player.class.Skills[2], shared.AnimationSkill2, now)
+		if ability, ok := classSkill(player.class, 2); ok {
+			r.useAbility(player, ability, shared.AnimationSkill2, now)
+		}
 	}
 	if input.Skill3 {
-		r.useAbility(player, player.class.Skills[3], shared.AnimationSkill3, now)
+		if ability, ok := classSkill(player.class, 3); ok {
+			r.useAbility(player, ability, shared.AnimationSkill3, now)
+		}
 	}
 	r.processInteraction(player, now)
 }
@@ -670,17 +846,28 @@ func (r *RaidRoom) updateTravel(state *shared.EntityState, now float64) {
 	state.Position = position
 }
 
-func (r *RaidRoom) applyDamageToPlayer(player *serverPlayer, damage int, dropPos shared.Vec2, now float64) {
+func (r *RaidRoom) applyDamageToPlayer(player *serverPlayer, damage int, _ shared.Vec2, now float64) {
 	if player.status != shared.PlayerRaidStatusActive {
 		return
 	}
 	player.state.HP -= damage
 	if player.state.HP <= 0 {
 		player.state.HP = 0
-		player.status = shared.PlayerRaidStatusEliminated
-		// r.dropCarriedLoot(player, dropPos)
-		player.carriedLoot = 0
-		shared.TriggerAnimation(&player.state, shared.AnimationDeath, now)
+		switch r.deathPenaltyForRoom(player.state.RoomID) {
+		case shared.DeathPenaltyRespawnKeepLoot:
+			r.respawnPlayer(player, r.pickGreenRespawnRoomID(), now)
+		case shared.DeathPenaltyRespawnHalfLoot:
+			lostLoot := player.carriedLoot - player.carriedLoot/2
+			r.dropLootValue(player.state.RoomID, lostLoot, player.state.Position)
+			player.carriedLoot /= 2
+			r.respawnPlayer(player, r.startRoomID(), now)
+		default:
+			player.status = shared.PlayerRaidStatusEliminated
+			r.dropCarriedLoot(player, player.state.Position)
+			player.state.Travel = nil
+			player.state.Velocity = shared.Vec2{}
+			shared.TriggerAnimation(&player.state, shared.AnimationDeath, now)
+		}
 		return
 	}
 	shared.TriggerAnimation(&player.state, shared.AnimationHit, now)
@@ -763,6 +950,7 @@ func (r *RaidRoom) broadcastSnapshots() {
 }
 
 func (r *RaidRoom) snapshotFor(playerID string) *shared.SnapshotMessage {
+	r.ensureAllPlayerLoadouts()
 	player := r.players[playerID]
 	ackSeq := uint32(0)
 	if player != nil {
@@ -801,6 +989,7 @@ func (r *RaidRoom) entitiesFor(_ string) []shared.EntityState {
 func concealedMimicState(state shared.EntityState, disguiseProfile string) shared.EntityState {
 	state.ID = "concealed-" + state.ID
 	state.Name = ""
+	state.Kind = shared.EntityKindProp
 	state.Faction = shared.FactionNeutral
 	state.ProfileID = disguiseProfile
 	state.FamilyID = "concealed_container"
@@ -856,6 +1045,9 @@ func (r *RaidRoom) raidStateFor(localPlayerID string) *shared.RaidState {
 }
 
 func (r *RaidRoom) cooldownsFor(player *serverPlayer) []shared.AbilityCooldown {
+	if err := r.ensurePlayerLoadout(player, ""); err != nil {
+		return nil
+	}
 	cooldowns := make([]shared.AbilityCooldown, 0, len(player.class.Skills))
 	now := r.serverTime()
 	for _, ability := range player.class.Skills {
@@ -903,6 +1095,7 @@ func (r *RaidRoom) serverTime() float64 {
 
 func (r *RaidRoom) cacheSolids() {
 	r.exitRotation = nil
+	r.spawnRotation = nil
 	r.roomSolids = make(map[string][]shared.Rect, len(r.raid.Layout.Rooms))
 	for _, room := range r.raid.Layout.Rooms {
 		// Keep solids per-room so physics only runs against the room the entity
@@ -912,6 +1105,27 @@ func (r *RaidRoom) cacheSolids() {
 		r.exitRotation = append(r.exitRotation, room.Exits...)
 	}
 	sort.Slice(r.exitRotation, func(i int, j int) bool { return r.exitRotation[i].ID < r.exitRotation[j].ID })
+	if len(r.exitRotation) > 1 {
+		r.rand.Shuffle(len(r.exitRotation), func(i int, j int) {
+			r.exitRotation[i], r.exitRotation[j] = r.exitRotation[j], r.exitRotation[i]
+		})
+	}
+
+	r.spawnRotation = append(r.spawnRotation, r.raid.PlayerSpawns...)
+	if len(r.spawnRotation) == 0 {
+		r.spawnRotation = append(r.spawnRotation, r.raid.PlayerSpawn)
+	}
+	if len(r.spawnRotation) > 1 {
+		sort.Slice(r.spawnRotation, func(i int, j int) bool {
+			if r.spawnRotation[i].X == r.spawnRotation[j].X {
+				return r.spawnRotation[i].Y < r.spawnRotation[j].Y
+			}
+			return r.spawnRotation[i].X < r.spawnRotation[j].X
+		})
+		r.rand.Shuffle(len(r.spawnRotation), func(i int, j int) {
+			r.spawnRotation[i], r.spawnRotation[j] = r.spawnRotation[j], r.spawnRotation[i]
+		})
+	}
 }
 
 // solidsForRoom returns the collision rects for a specific room.
@@ -971,20 +1185,128 @@ func (r *RaidRoom) assignExitForJoin() shared.ExitState {
 	if len(r.exitRotation) == 0 {
 		return shared.ExitState{}
 	}
-	exit := r.exitRotation[r.spawnIndex%len(r.exitRotation)]
-	r.spawnIndex++
+	exit := r.exitRotation[r.exitCursor%len(r.exitRotation)]
+	r.exitCursor++
 	return exit
 }
 
 func (r *RaidRoom) spawnPosition(_ content.AssetProfile) shared.Vec2 {
-	spawns := r.raid.PlayerSpawns
-	if len(spawns) == 0 {
+	if len(r.spawnRotation) == 0 {
 		// Fallback: single spawn with per-player X offset.
 		pos := r.raid.PlayerSpawn
-		pos.X += float64((r.spawnIndex % max(1, r.maxPlayers)) * 76)
+		pos.X += float64((r.spawnCursor % max(1, r.maxPlayers)) * 76)
 		return pos
 	}
-	return spawns[r.spawnIndex%len(spawns)]
+	pos := r.spawnRotation[r.spawnCursor%len(r.spawnRotation)]
+	r.spawnCursor++
+	return pos
+}
+
+func (r *RaidRoom) deathPenaltyForRoom(roomID string) shared.DeathPenalty {
+	room, ok := r.raid.Layout.RoomByID(roomID)
+	if !ok {
+		return shared.DeathPenaltyEliminateFullLoot
+	}
+	return room.EffectiveDeathPenalty(len(r.raid.Layout.Rooms))
+}
+
+func (r *RaidRoom) pickGreenRespawnRoomID() string {
+	bestRoomID := r.startRoomID()
+	bestCount := int(^uint(0) >> 1)
+	totalRooms := len(r.raid.Layout.Rooms)
+	for _, room := range r.raid.Layout.Rooms {
+		if room.EffectiveRingZone(totalRooms) != shared.RingZoneGreen {
+			continue
+		}
+		count := r.activePlayersInRoom(room.ID)
+		if count < bestCount {
+			bestCount = count
+			bestRoomID = room.ID
+		}
+	}
+	return bestRoomID
+}
+
+func (r *RaidRoom) activePlayersInRoom(roomID string) int {
+	count := 0
+	for _, other := range r.players {
+		if other.status == shared.PlayerRaidStatusActive && other.state.RoomID == roomID {
+			count++
+		}
+	}
+	return count
+}
+
+func (r *RaidRoom) pickRespawnPosition(roomID string, excludePlayerID string) shared.Vec2 {
+	candidates := r.spawnRotation
+	if len(candidates) == 0 {
+		candidates = append(candidates, r.raid.PlayerSpawn)
+	}
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+
+	best := candidates[0]
+	bestMinDist := -1.0
+	for _, candidate := range candidates {
+		minDist := math.MaxFloat64
+		hasOthers := false
+		for _, other := range r.players {
+			if other.state.ID == excludePlayerID || other.status != shared.PlayerRaidStatusActive || other.state.RoomID != roomID {
+				continue
+			}
+			hasOthers = true
+			dist := shared.EntityCenter(other.state).Sub(candidate).Length()
+			if dist < minDist {
+				minDist = dist
+			}
+		}
+		if !hasOthers {
+			minDist = math.MaxFloat64
+		}
+		if minDist > bestMinDist {
+			bestMinDist = minDist
+			best = candidate
+		}
+	}
+	return best
+}
+
+func (r *RaidRoom) respawnPlayer(player *serverPlayer, roomID string, now float64) {
+	if roomID == "" {
+		roomID = r.startRoomID()
+	}
+	player.state.RoomID = roomID
+	player.state.Position = r.pickRespawnPosition(roomID, player.state.ID)
+	player.state.Velocity = shared.Vec2{}
+	player.state.Travel = nil
+	player.state.HP = player.state.MaxHP
+	player.attackCombo = 0
+	shared.TriggerAnimation(&player.state, shared.AnimationIdle, now)
+}
+
+func (r *RaidRoom) dropLootValue(roomID string, value int, position shared.Vec2) {
+	if value <= 0 {
+		return
+	}
+	r.nextLootID++
+	id := fmt.Sprintf("loot-drop-%04d", r.nextLootID)
+	r.loot[id] = &lootPickup{
+		state: shared.LootState{
+			ID:       id,
+			RoomID:   roomID,
+			Position: position,
+			Value:    value,
+		},
+	}
+}
+
+func (r *RaidRoom) dropCarriedLoot(player *serverPlayer, position shared.Vec2) {
+	if player == nil || player.carriedLoot <= 0 {
+		return
+	}
+	r.dropLootValue(player.state.RoomID, player.carriedLoot, position)
+	player.carriedLoot = 0
 }
 
 func (r *RaidRoom) closestActivePlayerInRoom(roomID string, position shared.Vec2) *serverPlayer {
@@ -1003,6 +1325,13 @@ func (r *RaidRoom) closestActivePlayerInRoom(roomID string, position shared.Vec2
 		}
 	}
 	return best
+}
+
+func classSkill(class content.ClassDefinition, index int) (content.AbilityDefinition, bool) {
+	if index < 0 || index >= len(class.Skills) {
+		return content.AbilityDefinition{}, false
+	}
+	return class.Skills[index], true
 }
 
 func abilityDamage(abilityID string) int {

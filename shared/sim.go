@@ -19,7 +19,7 @@ func PlayerMovementConfig() MovementConfig {
 		AirAccel:     1120,
 		Friction:     1745,
 		Gravity:      2050,
-		JumpSpeed:    735,
+		JumpSpeed:    835,
 		MaxFallSpeed: 1220,
 	}
 }

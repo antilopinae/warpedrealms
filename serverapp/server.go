@@ -153,6 +153,15 @@ func (s *Server) handleWebSocket(writer http.ResponseWriter, request *http.Reque
 		http.Error(writer, "raid not found", http.StatusNotFound)
 		return
 	}
+	classID := request.URL.Query().Get("class")
+	if _, ok := s.sessions.bundle.Manifest.Class(classID); !ok {
+		classID = ""
+	}
+	if classID == "" {
+		if classDef, ok := s.sessions.bundle.Manifest.DefaultPlayerClass(); ok {
+			classID = classDef.ID
+		}
+	}
 
 	conn, err := s.upgrader.Upgrade(writer, request, nil)
 	if err != nil {
@@ -162,6 +171,7 @@ func (s *Server) handleWebSocket(writer http.ResponseWriter, request *http.Reque
 	peer := &Peer{
 		playerID:   session.UserID,
 		playerName: displayName(session.Email),
+		classID:    classID,
 		conn:       conn,
 		send:       make(chan shared.ServerMessage, 8),
 		room:       room,

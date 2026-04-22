@@ -64,6 +64,159 @@ func TestLastPlayerLeaveDoesNotFinishRaidAndAllowsRejoin(t *testing.T) {
 	}
 }
 
+func TestJoinUsesRequestedClassAndWelcomeEchoesIt(t *testing.T) {
+	bundle, err := content.LoadBundle(filepath.Join("..", shared.DefaultAssetManifestPath), filepath.Join("..", shared.DefaultRoomsDir))
+	if err != nil {
+		t.Fatalf("load bundle: %v", err)
+	}
+	room, err := NewRaidRoom("raid-test", "Raid Test", bundle, shared.DefaultRaidMaxPlayers, shared.DefaultRaidDuration, 12345)
+	if err != nil {
+		t.Fatalf("new raid room: %v", err)
+	}
+	room.Start()
+
+	peer := &Peer{
+		playerID:   "player-archer",
+		playerName: "player",
+		classID:    shared.PlayerClassKnight,
+		send:       make(chan shared.ServerMessage, 8),
+	}
+	if err := room.Join(peer); err != nil {
+		t.Fatalf("join peer: %v", err)
+	}
+
+	player := room.players[peer.playerID]
+	if player == nil {
+		t.Fatal("player missing after join")
+	}
+	if player.class.ID != shared.PlayerClassKnight {
+		t.Fatalf("expected class %s, got %s", shared.PlayerClassKnight, player.class.ID)
+	}
+	if player.state.ClassID != shared.PlayerClassKnight {
+		t.Fatalf("expected state class %s, got %s", shared.PlayerClassKnight, player.state.ClassID)
+	}
+	if player.profile.ID != player.class.ProfileID {
+		t.Fatalf("expected profile %s, got %s", player.class.ProfileID, player.profile.ID)
+	}
+
+	message := <-peer.send
+	if message.Welcome == nil {
+		t.Fatal("expected welcome message")
+	}
+	if message.Welcome.ClassID != shared.PlayerClassKnight {
+		t.Fatalf("expected welcome class %s, got %s", shared.PlayerClassKnight, message.Welcome.ClassID)
+	}
+}
+
+func TestJoinInvalidClassFallsBackToDefaultClass(t *testing.T) {
+	bundle, err := content.LoadBundle(filepath.Join("..", shared.DefaultAssetManifestPath), filepath.Join("..", shared.DefaultRoomsDir))
+	if err != nil {
+		t.Fatalf("load bundle: %v", err)
+	}
+	room, err := NewRaidRoom("raid-test", "Raid Test", bundle, shared.DefaultRaidMaxPlayers, shared.DefaultRaidDuration, 12345)
+	if err != nil {
+		t.Fatalf("new raid room: %v", err)
+	}
+	room.Start()
+
+	peer := &Peer{
+		playerID:   "player-default",
+		playerName: "player",
+		classID:    "not-a-class",
+		send:       make(chan shared.ServerMessage, 8),
+	}
+	if err := room.Join(peer); err != nil {
+		t.Fatalf("join peer: %v", err)
+	}
+
+	player := room.players[peer.playerID]
+	if player == nil {
+		t.Fatal("player missing after join")
+	}
+	if player.class.ID != shared.PlayerClassKnight {
+		t.Fatalf("expected default class %s, got %s", shared.PlayerClassKnight, player.class.ID)
+	}
+	if player.state.ClassID != shared.PlayerClassKnight {
+		t.Fatalf("expected default state class %s, got %s", shared.PlayerClassKnight, player.state.ClassID)
+	}
+}
+
+func TestJoinClassWithMissingProfileFallsBackToDefaultClass(t *testing.T) {
+	bundle, err := content.LoadBundle(filepath.Join("..", shared.DefaultAssetManifestPath), filepath.Join("..", shared.DefaultRoomsDir))
+	if err != nil {
+		t.Fatalf("load bundle: %v", err)
+	}
+	room, err := NewRaidRoom("raid-test", "Raid Test", bundle, shared.DefaultRaidMaxPlayers, shared.DefaultRaidDuration, 12345)
+	if err != nil {
+		t.Fatalf("new raid room: %v", err)
+	}
+	room.Start()
+
+	peer := &Peer{
+		playerID:   "player-broken-class",
+		playerName: "player",
+		classID:    shared.PlayerClassArcherAssassin,
+		send:       make(chan shared.ServerMessage, 8),
+	}
+	if err := room.Join(peer); err != nil {
+		t.Fatalf("join peer: %v", err)
+	}
+
+	player := room.players[peer.playerID]
+	if player == nil {
+		t.Fatal("player missing after join")
+	}
+	if player.class.ID != shared.PlayerClassKnight {
+		t.Fatalf("expected fallback class %s, got %s", shared.PlayerClassKnight, player.class.ID)
+	}
+}
+
+func TestSimulatePlayerDoesNotPanicWithMissingSkillSlots(t *testing.T) {
+	bundle, err := content.LoadBundle(filepath.Join("..", shared.DefaultAssetManifestPath), filepath.Join("..", shared.DefaultRoomsDir))
+	if err != nil {
+		t.Fatalf("load bundle: %v", err)
+	}
+	room, err := NewRaidRoom("raid-test", "Raid Test", bundle, shared.DefaultRaidMaxPlayers, shared.DefaultRaidDuration, 12345)
+	if err != nil {
+		t.Fatalf("new raid room: %v", err)
+	}
+
+	profile, ok := bundle.Manifest.Profile("player_knight")
+	if !ok {
+		t.Fatal("player_knight profile missing")
+	}
+	player := &serverPlayer{
+		class: content.ClassDefinition{
+			ID:        "stub-class",
+			ProfileID: profile.ID,
+			Skills: []content.AbilityDefinition{
+				{ID: "basic_slash", Name: "Basic Slash", Cooldown: 0.35},
+			},
+		},
+		profile:   profile,
+		status:    shared.PlayerRaidStatusActive,
+		cooldowns: make(map[string]float64),
+		state: func() shared.EntityState {
+			state := profile.DefaultState()
+			state.ID = "player-test"
+			state.Name = "player"
+			state.RoomID = room.startRoomID()
+			return state
+		}(),
+	}
+
+	room.simulatePlayer(player, shared.InputCommand{
+		PrimaryAttack: true,
+		Skill1:        true,
+		Skill2:        true,
+		Skill3:        true,
+	}, room.serverTime())
+
+	if len(player.cooldowns) > 1 {
+		t.Fatalf("expected only one cooldown entry, got %d", len(player.cooldowns))
+	}
+}
+
 func TestHiddenMimicSnapshotDoesNotLeakMimicDetails(t *testing.T) {
 	bundle, err := content.LoadBundle(filepath.Join("..", shared.DefaultAssetManifestPath), filepath.Join("..", shared.DefaultRoomsDir))
 	if err != nil {
@@ -174,8 +327,36 @@ func hiddenMimicFromRoom(t *testing.T, room *RaidRoom) *serverNPC {
 			return npc
 		}
 	}
-	t.Fatal("no hidden mimic in generated room")
-	return nil
+
+	profile, ok := room.bundle.Manifest.Profile("mob_rat")
+	if !ok {
+		t.Fatal("mob_rat profile missing")
+	}
+	disguiseProfile, ok := room.bundle.Manifest.Profile("player_knight")
+	if !ok {
+		t.Fatal("player_knight profile missing")
+	}
+
+	state := profile.DefaultState()
+	state.ID = "test-hidden-mimic"
+	state.Name = "Hidden Mimic"
+	state.Kind = shared.EntityKindMimic
+	state.RoomID = room.startRoomID()
+	state.Position = room.raid.PlayerSpawn
+	state.AnimationStartedAt = room.serverTime()
+
+	npc := &serverNPC{
+		profile:         profile,
+		state:           state,
+		home:            state.Position,
+		patrolMin:       state.Position.X - 220,
+		patrolMax:       state.Position.X + 220,
+		direction:       1,
+		disguiseProfile: disguiseProfile.ID,
+		awakened:        false,
+	}
+	room.npcs[state.ID] = npc
+	return npc
 }
 
 func waitForRoomPhase(t *testing.T, room *RaidRoom, phase shared.RaidPhase) {

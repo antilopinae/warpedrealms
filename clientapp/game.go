@@ -124,6 +124,7 @@ func NewGame(baseURL string, manifestPath string, roomsDir string) (*Game, error
 		worldScale:     float64(shared.ScreenHeight) / 480.0,
 		startedAt:      time.Now(),
 	}
+	game.syncSelectedClass()
 	game.updateViewOffset()
 	return game, nil
 }
@@ -296,6 +297,58 @@ func (g *Game) updateLobby() {
 	}
 }
 
+func (g *Game) syncSelectedClass() {
+	if g.bundle == nil || g.bundle.Manifest == nil || len(g.bundle.Manifest.Classes) == 0 {
+		g.selectedClass = 0
+		return
+	}
+	classDef, ok := g.bundle.Manifest.DefaultPlayerClass()
+	if !ok {
+		g.selectedClass = 0
+		return
+	}
+	for i, class := range g.bundle.Manifest.Classes {
+		if class.ID == classDef.ID {
+			g.selectedClass = i
+			return
+		}
+	}
+	g.selectedClass = 0
+}
+
+func (g *Game) selectedClassDefinition() (content.ClassDefinition, bool) {
+	if g.bundle == nil || g.bundle.Manifest == nil || len(g.bundle.Manifest.Classes) == 0 {
+		return content.ClassDefinition{}, false
+	}
+	if g.selectedClass < 0 || g.selectedClass >= len(g.bundle.Manifest.Classes) {
+		g.syncSelectedClass()
+	}
+	if g.selectedClass < 0 || g.selectedClass >= len(g.bundle.Manifest.Classes) {
+		return content.ClassDefinition{}, false
+	}
+	return g.bundle.Manifest.Classes[g.selectedClass], true
+}
+
+func (g *Game) selectedClassID() string {
+	classDef, ok := g.selectedClassDefinition()
+	if !ok {
+		return ""
+	}
+	return classDef.ID
+}
+
+func (g *Game) syncSelectedClassByID(classID string) {
+	if classID == "" || g.bundle == nil || g.bundle.Manifest == nil {
+		return
+	}
+	for i, class := range g.bundle.Manifest.Classes {
+		if class.ID == classID {
+			g.selectedClass = i
+			return
+		}
+	}
+}
+
 func (g *Game) updateGame() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyF3) {
 		g.debugPhysics = !g.debugPhysics
@@ -405,8 +458,13 @@ func (g *Game) beginAuth() {
 			g.token = token
 			g.raids = raids
 			g.selectedRaid = 0
+			g.syncSelectedClass()
 			g.screen = screenLobby
-			g.status = "Авторизация успешна. Выбери рейд и класс."
+			if classDef, ok := g.selectedClassDefinition(); ok {
+				g.status = fmt.Sprintf("Авторизация успешна. Класс по умолчанию: %s. Выбери рейд.", classDef.Name)
+			} else {
+				g.status = "Авторизация успешна. Выбери рейд."
+			}
 		})
 	}()
 }
@@ -467,8 +525,9 @@ func (g *Game) connectToRaid(raidID string) {
 func (g *Game) connectToRaidAsync(token string, raidID string) {
 	g.resetRaidState()
 	g.currentRaidID = raidID
+	classID := g.selectedClassID()
 	go func() {
-		if err := g.network.Connect(token, raidID); err != nil {
+		if err := g.network.Connect(token, raidID, classID); err != nil {
 			g.post(func() {
 				g.screen = screenLobby
 				g.status = err.Error()
@@ -562,10 +621,15 @@ func (g *Game) drawLobby(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{10, 16, 24, 255})
 	drawPanel(screen, shared.Rect{X: 56, Y: 54, W: 1168, H: 612}, color.RGBA{17, 27, 38, 235}, color.RGBA{70, 120, 170, 255}, 2)
 
+	classLabel := "unknown"
+	if classDef, ok := g.selectedClassDefinition(); ok {
+		classLabel = classDef.Name
+	}
+
 	ebitenutil.DebugPrintAt(screen, "Raid Lobby", 88, 80)
 	ebitenutil.DebugPrintAt(screen, "Click cards and raids. Double-click raid or use Join. Keyboard still works.", 88, 102)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Signed as %s", g.email), 88, 124)
-	ebitenutil.DebugPrintAt(screen, "Left/Right: change class   Up/Down: change raid   F1: settings", 88, 146)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Class: %s   Up/Down: change raid   F1: settings", classLabel), 88, 146)
 
 	buttons := []struct {
 		label  string
@@ -665,122 +729,126 @@ func (g *Game) revealBgRoomID(activeRoomID string) string {
 
 func (g *Game) drawPhysicsDebug(screen *ebiten.Image, activeRoomID string, entities []shared.EntityState) {
 	room, ok := g.currentLayout.RoomByID(activeRoomID)
-	if !ok {
-		return
-	}
-
-	// Draw solid collision rects (cyan fill + border).
-	for _, solid := range room.Solids {
-		sx := float32(g.viewOffset.X + (solid.X-g.camera.X)*g.worldScale)
-		sy := float32(g.viewOffset.Y + (solid.Y-g.camera.Y)*g.worldScale)
-		sw := float32(solid.W * g.worldScale)
-		sh := float32(solid.H * g.worldScale)
-		vector.DrawFilledRect(screen, sx, sy, sw, sh, color.RGBA{0, 200, 255, 40}, false)
-		vector.StrokeRect(screen, sx, sy, sw, sh, 1, color.RGBA{0, 200, 255, 200}, false)
-	}
-
-	// Draw jump link areas (yellow).
-	for _, link := range room.JumpLinks {
-		sx := float32(g.viewOffset.X + (link.Area.X-g.camera.X)*g.worldScale)
-		sy := float32(g.viewOffset.Y + (link.Area.Y-g.camera.Y)*g.worldScale)
-		vector.StrokeRect(screen, sx, sy, float32(link.Area.W*g.worldScale), float32(link.Area.H*g.worldScale), 2, color.RGBA{255, 220, 0, 220}, false)
-	}
-
-	// Draw reveal zones (translucent white outline).
-	for _, zone := range room.RevealZones {
-		sx := float32(g.viewOffset.X + (zone.Area.X-g.camera.X)*g.worldScale)
-		sy := float32(g.viewOffset.Y + (zone.Area.Y-g.camera.Y)*g.worldScale)
-		vector.StrokeRect(screen, sx, sy, float32(zone.Area.W*g.worldScale), float32(zone.Area.H*g.worldScale), 1, color.RGBA{220, 220, 255, 140}, false)
-	}
-
-	// Draw rifts: color-coded, show capacity / used count.
-	for _, rift := range room.Rifts {
-		sx := float32(g.viewOffset.X + (rift.Area.X-g.camera.X)*g.worldScale)
-		sy := float32(g.viewOffset.Y + (rift.Area.Y-g.camera.Y)*g.worldScale)
-		sw := float32(rift.Area.W * g.worldScale)
-		sh := float32(rift.Area.H * g.worldScale)
-		clr := riftDebugColor(rift.Kind, rift.IsOpen())
-		vector.StrokeRect(screen, sx, sy, sw, sh, 2, clr, false)
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%s %d/%d", rift.Kind, rift.UsedCount, rift.Capacity), int(sx), int(sy)-14)
-	}
-
-	// Draw spawn points as orange circles (stored in layout, generated for the first room).
-	for i, spawn := range g.currentLayout.PlayerSpawns {
-		sx := float32(g.viewOffset.X + (spawn.X-g.camera.X)*g.worldScale)
-		sy := float32(g.viewOffset.Y + (spawn.Y-g.camera.Y)*g.worldScale)
-		vector.DrawFilledCircle(screen, sx, sy, 8, color.RGBA{255, 140, 0, 180}, false)
-		vector.StrokeCircle(screen, sx, sy, 8, 2, color.RGBA{255, 200, 80, 255}, false)
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("S%d", i+1), int(sx)+10, int(sy)-8)
-	}
-
-	// Draw entity physics capsules: green if grounded, red if airborne.
-	for _, entity := range entities {
-		bounds := shared.EntityBounds(entity)
-		bx := g.viewOffset.X + (bounds.X-g.camera.X)*g.worldScale
-		by := g.viewOffset.Y + (bounds.Y-g.camera.Y)*g.worldScale
-		bw := bounds.W * g.worldScale
-		bh := bounds.H * g.worldScale
-
-		clr := color.RGBA{255, 60, 60, 220} // red = airborne
-		fill := color.RGBA{255, 60, 60, 40}
-		if entity.Grounded {
-			clr = color.RGBA{60, 255, 80, 220} // green = grounded
-			fill = color.RGBA{60, 255, 80, 40}
+	if ok {
+		// Draw solid collision rects (cyan fill + border).
+		for _, solid := range room.Solids {
+			sx := float32(g.viewOffset.X + (solid.X-g.camera.X)*g.worldScale)
+			sy := float32(g.viewOffset.Y + (solid.Y-g.camera.Y)*g.worldScale)
+			sw := float32(solid.W * g.worldScale)
+			sh := float32(solid.H * g.worldScale)
+			vector.DrawFilledRect(screen, sx, sy, sw, sh, color.RGBA{0, 200, 255, 40}, false)
+			vector.StrokeRect(screen, sx, sy, sw, sh, 1, color.RGBA{0, 200, 255, 200}, false)
 		}
 
-		// Capsule: radius = half the width.
-		r := float32(bw * 0.5)
-		cx := float32(bx + bw*0.5)
-		topY := float32(by + float64(r))
-		botY := float32(by + bh - float64(r))
-
-		// Fill: middle rect + two circles.
-		vector.DrawFilledRect(screen, float32(bx), topY, float32(bw), botY-topY, fill, false)
-		vector.DrawFilledCircle(screen, cx, topY, r, fill, true)
-		vector.DrawFilledCircle(screen, cx, botY, r, fill, true)
-
-		// Stroke: sides of the middle rect + two circle outlines.
-		strokeW := float32(2)
-		vector.StrokeCircle(screen, cx, topY, r, strokeW, clr, true)
-		vector.StrokeCircle(screen, cx, botY, r, strokeW, clr, true)
-		// Cover the flat edges where circles meet the rect (no stroke line in the middle).
-		vector.StrokeLine(screen, float32(bx), topY, float32(bx), botY, strokeW, clr, false)
-		vector.StrokeLine(screen, float32(bx+bw), topY, float32(bx+bw), botY, strokeW, clr, false)
-
-		// Yellow dot = Position origin.
-		px := float32(g.viewOffset.X + (entity.Position.X-g.camera.X)*g.worldScale)
-		py := float32(g.viewOffset.Y + (entity.Position.Y-g.camera.Y)*g.worldScale)
-		vector.DrawFilledCircle(screen, px, py, 4, color.RGBA{255, 255, 0, 255}, false)
-
-		// Hurtbox — magenta rect (takes damage zone).
-		hb := entity.Hurtbox
-		if hb.W > 0 && hb.H > 0 {
-			hx := float32(g.viewOffset.X + (entity.Position.X+hb.X-g.camera.X)*g.worldScale)
-			hy := float32(g.viewOffset.Y + (entity.Position.Y+hb.Y-g.camera.Y)*g.worldScale)
-			hw := float32(hb.W * g.worldScale)
-			hh := float32(hb.H * g.worldScale)
-			vector.StrokeRect(screen, hx, hy, hw, hh, 1, color.RGBA{220, 60, 255, 200}, false)
+		// Draw jump link areas (yellow).
+		for _, link := range room.JumpLinks {
+			sx := float32(g.viewOffset.X + (link.Area.X-g.camera.X)*g.worldScale)
+			sy := float32(g.viewOffset.Y + (link.Area.Y-g.camera.Y)*g.worldScale)
+			vector.StrokeRect(screen, sx, sy, float32(link.Area.W*g.worldScale), float32(link.Area.H*g.worldScale), 2, color.RGBA{255, 220, 0, 220}, false)
 		}
 
-		// Attack hitbox — orange rect when entity is actively attacking.
-		if profile, ok := g.assets.Manifest.Profile(entity.ProfileID); ok {
-			elapsed := g.animationElapsed(entity)
-			if atk, active := profile.HitboxFor(entity.Animation, elapsed, entity.Facing, entity.Position); active {
-				ax := float32(g.viewOffset.X + (atk.X-g.camera.X)*g.worldScale)
-				ay := float32(g.viewOffset.Y + (atk.Y-g.camera.Y)*g.worldScale)
-				aw := float32(atk.W * g.worldScale)
-				ah := float32(atk.H * g.worldScale)
-				vector.DrawFilledRect(screen, ax, ay, aw, ah, color.RGBA{255, 140, 0, 60}, false)
-				vector.StrokeRect(screen, ax, ay, aw, ah, 2, color.RGBA{255, 140, 0, 240}, false)
-				ebitenutil.DebugPrintAt(screen, "HIT", int(ax), int(ay)-14)
+		// Draw reveal zones (translucent white outline).
+		for _, zone := range room.RevealZones {
+			sx := float32(g.viewOffset.X + (zone.Area.X-g.camera.X)*g.worldScale)
+			sy := float32(g.viewOffset.Y + (zone.Area.Y-g.camera.Y)*g.worldScale)
+			vector.StrokeRect(screen, sx, sy, float32(zone.Area.W*g.worldScale), float32(zone.Area.H*g.worldScale), 1, color.RGBA{220, 220, 255, 140}, false)
+		}
+
+		// Draw rifts: color-coded, show capacity / used count.
+		for _, rift := range room.Rifts {
+			sx := float32(g.viewOffset.X + (rift.Area.X-g.camera.X)*g.worldScale)
+			sy := float32(g.viewOffset.Y + (rift.Area.Y-g.camera.Y)*g.worldScale)
+			sw := float32(rift.Area.W * g.worldScale)
+			sh := float32(rift.Area.H * g.worldScale)
+			clr := riftDebugColor(rift.Kind, rift.IsOpen())
+			vector.StrokeRect(screen, sx, sy, sw, sh, 2, clr, false)
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%s %d/%d", rift.Kind, rift.UsedCount, rift.Capacity), int(sx), int(sy)-14)
+		}
+
+		// Draw spawn points as orange circles (stored in layout, generated for the first room).
+		for i, spawn := range g.currentLayout.PlayerSpawns {
+			sx := float32(g.viewOffset.X + (spawn.X-g.camera.X)*g.worldScale)
+			sy := float32(g.viewOffset.Y + (spawn.Y-g.camera.Y)*g.worldScale)
+			vector.DrawFilledCircle(screen, sx, sy, 8, color.RGBA{255, 140, 0, 180}, false)
+			vector.StrokeCircle(screen, sx, sy, 8, 2, color.RGBA{255, 200, 80, 255}, false)
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("S%d", i+1), int(sx)+10, int(sy)-8)
+		}
+
+		// Draw entity physics capsules: green if grounded, red if airborne.
+		for _, entity := range entities {
+			bounds := shared.EntityBounds(entity)
+			bx := g.viewOffset.X + (bounds.X-g.camera.X)*g.worldScale
+			by := g.viewOffset.Y + (bounds.Y-g.camera.Y)*g.worldScale
+			bw := bounds.W * g.worldScale
+			bh := bounds.H * g.worldScale
+
+			clr := color.RGBA{255, 60, 60, 220} // red = airborne
+			fill := color.RGBA{255, 60, 60, 40}
+			if entity.Grounded {
+				clr = color.RGBA{60, 255, 80, 220} // green = grounded
+				fill = color.RGBA{60, 255, 80, 40}
 			}
-		}
 
-		// Label: show Y position and velocity.
-		ebitenutil.DebugPrintAt(screen,
-			fmt.Sprintf("y=%.0f vy=%.0f %s", entity.Position.Y, entity.Velocity.Y, map[bool]string{true: "GND", false: "AIR"}[entity.Grounded]),
-			int(bx), int(by)-16)
+			// Capsule: radius = half the width.
+			r := float32(bw * 0.5)
+			cx := float32(bx + bw*0.5)
+			topY := float32(by + float64(r))
+			botY := float32(by + bh - float64(r))
+
+			// Fill: middle rect + two circles.
+			vector.DrawFilledRect(screen, float32(bx), topY, float32(bw), botY-topY, fill, false)
+			vector.DrawFilledCircle(screen, cx, topY, r, fill, true)
+			vector.DrawFilledCircle(screen, cx, botY, r, fill, true)
+
+			// Stroke: sides of the middle rect + two circle outlines.
+			strokeW := float32(2)
+			vector.StrokeCircle(screen, cx, topY, r, strokeW, clr, true)
+			vector.StrokeCircle(screen, cx, botY, r, strokeW, clr, true)
+			// Cover the flat edges where circles meet the rect (no stroke line in the middle).
+			vector.StrokeLine(screen, float32(bx), topY, float32(bx), botY, strokeW, clr, false)
+			vector.StrokeLine(screen, float32(bx+bw), topY, float32(bx+bw), botY, strokeW, clr, false)
+
+			// Yellow dot = Position origin.
+			px := float32(g.viewOffset.X + (entity.Position.X-g.camera.X)*g.worldScale)
+			py := float32(g.viewOffset.Y + (entity.Position.Y-g.camera.Y)*g.worldScale)
+			vector.DrawFilledCircle(screen, px, py, 4, color.RGBA{255, 255, 0, 255}, false)
+
+			// Hurtbox — magenta rect (takes damage zone).
+			hb := entity.Hurtbox
+			if hb.W > 0 && hb.H > 0 {
+				hx := float32(g.viewOffset.X + (entity.Position.X+hb.X-g.camera.X)*g.worldScale)
+				hy := float32(g.viewOffset.Y + (entity.Position.Y+hb.Y-g.camera.Y)*g.worldScale)
+				hw := float32(hb.W * g.worldScale)
+				hh := float32(hb.H * g.worldScale)
+				vector.StrokeRect(screen, hx, hy, hw, hh, 1, color.RGBA{220, 60, 255, 200}, false)
+			}
+
+			// Attack hitbox — orange rect when entity is actively attacking.
+			if profile, ok := g.assets.Manifest.Profile(entity.ProfileID); ok {
+				elapsed := g.animationElapsed(entity)
+				if atk, active := profile.HitboxFor(entity.Animation, elapsed, entity.Facing, entity.Position); active {
+					ax := float32(g.viewOffset.X + (atk.X-g.camera.X)*g.worldScale)
+					ay := float32(g.viewOffset.Y + (atk.Y-g.camera.Y)*g.worldScale)
+					aw := float32(atk.W * g.worldScale)
+					ah := float32(atk.H * g.worldScale)
+					vector.DrawFilledRect(screen, ax, ay, aw, ah, color.RGBA{255, 140, 0, 60}, false)
+					vector.StrokeRect(screen, ax, ay, aw, ah, 2, color.RGBA{255, 140, 0, 240}, false)
+					ebitenutil.DebugPrintAt(screen, "HIT", int(ax), int(ay)-14)
+				}
+			}
+
+			// Label: show Y position and velocity.
+			ebitenutil.DebugPrintAt(screen,
+				fmt.Sprintf("y=%.0f vy=%.0f %s", entity.Position.Y, entity.Velocity.Y, map[bool]string{true: "GND", false: "AIR"}[entity.Grounded]),
+				int(bx), int(by)-16)
+		}
 	}
+
+	roomType := "unknown"
+	if ok {
+		roomType = formatRoomType(room, len(g.currentLayout.Rooms))
+	}
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Type: %s", roomType), 16, shared.ScreenHeight-40)
 
 	ebitenutil.DebugPrintAt(screen, "[F3] debug  cyan=solid  yellow=portal  white=reveal  rift=R/B/G  orange●=spawn", 16, shared.ScreenHeight-22)
 }
@@ -828,7 +896,15 @@ func (g *Game) drawRaidHUD(screen *ebiten.Image, entityCount int) {
 
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Raid: %s (%s)", g.currentRaid.Name, g.currentRaid.RaidID), 28, 28)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Phase: %s  Time: %.0fs / %.0fs  Seed: %d", g.currentRaid.Phase, g.currentRaid.TimeRemaining, g.currentRaid.Duration, g.currentRaid.Seed), 28, 46)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Room: %s  Status: %s", roomID, localStatus), 28, 64)
+	roomLine := fmt.Sprintf("Room: %s  Status: %s", roomID, localStatus)
+	if g.debugPhysics {
+		roomType := "unknown"
+		if room, ok := g.currentLayout.RoomByID(roomID); ok {
+			roomType = formatRoomType(room, len(g.currentLayout.Rooms))
+		}
+		roomLine = fmt.Sprintf("Room: %s  Type: %s  Status: %s", roomID, roomType, localStatus)
+	}
+	ebitenutil.DebugPrintAt(screen, roomLine, 28, 64)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("HP: %d/%d  Loot: %d  Exit: %s", hp, maxHP, loot, exitTag), 28, 82)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Ping: %.0f ms  Pending: %d  Ack: %d  Entities: %d", g.pingMS, len(g.pendingInput), g.lastAckSeq, entityCount), 28, 100)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Attack %s  Skills %s/%s/%s  Interact %s  JumpLink %s", BindingLabel(g.controls, ActionAttack), BindingLabel(g.controls, ActionSkill1), BindingLabel(g.controls, ActionSkill2), BindingLabel(g.controls, ActionSkill3), BindingLabel(g.controls, ActionInteract), BindingLabel(g.controls, ActionUseJumpLink)), 28, 118)
@@ -1101,7 +1177,12 @@ func (g *Game) drainNetwork() {
 		case welcome := <-g.network.WelcomeCh:
 			g.localID = welcome.PlayerID
 			g.currentRaidID = welcome.RaidID
-			g.status = fmt.Sprintf("Подключён к %s. Жду состояние рейда...", welcome.RaidName)
+			g.syncSelectedClassByID(welcome.ClassID)
+			if classDef, ok := g.bundle.Manifest.Class(welcome.ClassID); ok {
+				g.status = fmt.Sprintf("Подключён к %s как %s. Жду состояние рейда...", welcome.RaidName, classDef.Name)
+			} else {
+				g.status = fmt.Sprintf("Подключён к %s. Жду состояние рейда...", welcome.RaidName)
+			}
 			g.lastServerTS = welcome.ServerTime
 			g.lastServerAt = time.Now()
 		case snapshot := <-g.network.SnapshotCh:
@@ -1349,6 +1430,21 @@ func clamp(value float64, minValue float64, maxValue float64) float64 {
 		return maxValue
 	}
 	return value
+}
+
+func formatRoomType(room shared.RoomState, totalRooms int) string {
+	ring := string(room.EffectiveRingZone(totalRooms))
+	if ring == "" {
+		ring = "unknown"
+	}
+	if room.IsThrone || room.EffectiveRingZone(totalRooms) == shared.RingZoneThrone {
+		ring += " (throne)"
+	}
+	biome := strings.TrimSpace(room.Biome)
+	if biome == "" {
+		biome = "unknown"
+	}
+	return fmt.Sprintf("ring=%s biome=%s", ring, biome)
 }
 
 // riftDebugColor returns a debug outline colour for a rift based on kind and open state.

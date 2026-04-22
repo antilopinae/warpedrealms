@@ -65,6 +65,7 @@ type AssetProfile struct {
 	Name           string            `json:"name"`
 	Kind           shared.EntityKind `json:"kind"`
 	Faction        shared.Faction    `json:"faction"`
+	ClassID        string            `json:"class_id,omitempty"`
 	FamilyID       string            `json:"family_id"`
 	Scale          float64           `json:"scale"`
 	SpriteSize     shared.Vec2       `json:"sprite_size"`
@@ -202,6 +203,22 @@ func (m *Manifest) Normalize() {
 		style.ID = id
 		m.TileStyles[id] = style
 	}
+	for i := range m.Classes {
+		if m.Classes[i].Name == "" {
+			m.Classes[i].Name = strings.ReplaceAll(strings.Title(strings.ReplaceAll(m.Classes[i].ID, "_", " ")), "  ", " ")
+		}
+		if m.Classes[i].ProfileID == "" {
+			continue
+		}
+		profile, ok := m.Profiles[m.Classes[i].ProfileID]
+		if !ok {
+			continue
+		}
+		if profile.ClassID == "" {
+			profile.ClassID = m.Classes[i].ID
+			m.Profiles[profile.ID] = profile
+		}
+	}
 }
 
 func (b *Bundle) Validate() error {
@@ -226,6 +243,34 @@ func (m *Manifest) SortedProfileIDs() []string {
 func (m *Manifest) Profile(id string) (AssetProfile, bool) {
 	profile, ok := m.Profiles[id]
 	return profile, ok
+}
+
+func (m *Manifest) Class(id string) (ClassDefinition, bool) {
+	for _, class := range m.Classes {
+		if class.ID == id {
+			return class, true
+		}
+	}
+	return ClassDefinition{}, false
+}
+
+func (m *Manifest) ClassByProfileID(profileID string) (ClassDefinition, bool) {
+	for _, class := range m.Classes {
+		if class.ProfileID == profileID {
+			return class, true
+		}
+	}
+	return ClassDefinition{}, false
+}
+
+func (m *Manifest) DefaultPlayerClass() (ClassDefinition, bool) {
+	if class, ok := m.Class(shared.PlayerClassKnight); ok {
+		return class, true
+	}
+	if len(m.Classes) == 0 {
+		return ClassDefinition{}, false
+	}
+	return m.Classes[0], true
 }
 
 func (profile AssetProfile) HitboxFor(animation shared.AnimationState, elapsed float64, facing float64, origin shared.Vec2) (shared.Rect, bool) {
@@ -256,6 +301,7 @@ func (profile AssetProfile) DefaultState() shared.EntityState {
 	return shared.EntityState{
 		Kind:           profile.Kind,
 		Faction:        profile.Faction,
+		ClassID:        profile.ClassID,
 		ProfileID:      profile.ID,
 		FamilyID:       profile.FamilyID,
 		MaxHP:          profile.MaxHP,

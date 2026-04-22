@@ -252,6 +252,7 @@ func (b *Bundle) GenerateRaid(seed int64) (*GeneratedRaid, error) {
 	sort.Slice(generated.Layout.Rooms, func(i int, j int) bool {
 		return generated.Layout.Rooms[i].Index < generated.Layout.Rooms[j].Index
 	})
+	annotateRoomsWithSessionRings(generated.Layout.Rooms)
 	generated.NPCs = npcs
 	generated.PlayerSpawn = shared.Vec2{
 		X: builds[0].state.Bounds.X + builds[0].template.PlayerSpawn.X,
@@ -424,6 +425,7 @@ func (b *Bundle) buildRaidFromMaps(maps []*world.MapData) (*GeneratedRaid, error
 	}
 
 	sort.Slice(rooms, func(i, j int) bool { return rooms[i].Index < rooms[j].Index })
+	annotateRoomsWithSessionRings(rooms)
 
 	return &GeneratedRaid{
 		Layout:       shared.RaidLayoutState{Rooms: rooms, PlayerSpawns: playerSpawns},

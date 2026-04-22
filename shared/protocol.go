@@ -50,6 +50,7 @@ type PongMessage struct {
 type WelcomeMessage struct {
 	PlayerID              string  `json:"player_id"`
 	PlayerName            string  `json:"player_name"`
+	ClassID               string  `json:"class_id,omitempty"`
 	RaidID                string  `json:"raid_id"`
 	RaidName              string  `json:"raid_name"`
 	ContentVersion        string  `json:"content_version"`

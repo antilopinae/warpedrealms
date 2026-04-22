@@ -219,10 +219,9 @@ func AssembleLocation(rng *rand.Rand, nodes []NodeDef, biome, id string, cfg Pro
 		})
 	}
 
-	actualW := offsetX
-	if actualW < targetW {
-		actualW = targetW
-	}
+	// Keep every assembled location at a fixed rectangular size.
+	// Any overflow from node chaining is cropped to the target grid width.
+	actualW := targetW
 
 	// ── scatter pass: add stepping stones in sparse vertical gaps ─────────────
 	if cfg.Density > 0 {
@@ -232,7 +231,23 @@ func AssembleLocation(rng *rand.Rand, nodes []NodeDef, biome, id string, cfg Pro
 	// Flatten set → slice.
 	solidCells := make([][2]int, 0, len(solidSet))
 	for c := range solidSet {
+		if c[0] < 0 || c[0] >= actualW || c[1] < 0 || c[1] >= gridH {
+			continue
+		}
 		solidCells = append(solidCells, c)
+	}
+
+	maxPX := (actualW - 2) * naGridSz
+	if maxPX < 0 {
+		maxPX = 0
+	}
+	for i := range entities {
+		if entities[i].PX < 0 {
+			entities[i].PX = 0
+		}
+		if entities[i].PX > maxPX {
+			entities[i].PX = maxPX
+		}
 	}
 
 	return world.LDtkWriteLevel{
@@ -307,13 +322,14 @@ func naFloorSurface(cells map[[2]int]bool, gridW, gridH int) int {
 // the floating stepping stones placed by naPlantGroundSteps.
 //
 // Design rules:
-//   height  1 → platform at floor-1, merges into a 2-block-tall bump.
-//   height  2 → platform at floor-2, merges via the vertical gap fill into
-//               a 3-block-tall bump.  Player can jump over (maxJump = 8 rows).
-//   walkGap — minimum clear ground between consecutive bumps so the player
-//             can always walk left-to-right at ground level between bumps.
-//   The bump tops are also picked up by naGrowPlatformGraph as frontier seeds,
-//   so the graph connects each bump upward to higher platforms.
+//
+//	height  1 → platform at floor-1, merges into a 2-block-tall bump.
+//	height  2 → platform at floor-2, merges via the vertical gap fill into
+//	            a 3-block-tall bump.  Player can jump over (maxJump = 8 rows).
+//	walkGap — minimum clear ground between consecutive bumps so the player
+//	          can always walk left-to-right at ground level between bumps.
+//	The bump tops are also picked up by naGrowPlatformGraph as frontier seeds,
+//	so the graph connects each bump upward to higher platforms.
 func naPlantGroundBumps(rng *rand.Rand, cells map[[2]int]bool, gridW, gridH int) {
 	const (
 		// height=1 only: bump sits at floor-1 (row 281 when floor=282).
@@ -351,22 +367,23 @@ func naPlantGroundBumps(rng *rand.Rand, cells map[[2]int]bool, gridW, gridH int)
 // higher platforms.  They serve as the first rung of the vertical ladder.
 //
 // Design rules:
-//   minAbove/maxAbove — 1–3 rows above the floor.  The player steps ON these
-//               stones, not under them, so walk-under clearance is not needed.
-//               The isClear check (playerH rows above the stone) naturally
-//               rejects only positions where the player can't stand (head hits
-//               a ceiling); with stones ≤ 3 rows above GND the L1 node-island
-//               platforms at row 274 are out of the check window (GND≈282,
-//               stone at 279–281, head at 275–277, L1 at 274 → no collision).
-//   spacing   — horizontal distance (stoneW + walkGap) keeps ≥ 15 blocks of
-//               open floor between stones so the player can always walk through.
+//
+//	minAbove/maxAbove — 1–3 rows above the floor.  The player steps ON these
+//	            stones, not under them, so walk-under clearance is not needed.
+//	            The isClear check (playerH rows above the stone) naturally
+//	            rejects only positions where the player can't stand (head hits
+//	            a ceiling); with stones ≤ 3 rows above GND the L1 node-island
+//	            platforms at row 274 are out of the check window (GND≈282,
+//	            stone at 279–281, head at 275–277, L1 at 274 → no collision).
+//	spacing   — horizontal distance (stoneW + walkGap) keeps ≥ 15 blocks of
+//	            open floor between stones so the player can always walk through.
 //
 // These stones are written into cells BEFORE naGrowPlatformGraph runs, so the
 // grower picks them up as frontier seeds and connects each one upward.
 func naPlantGroundSteps(rng *rand.Rand, cells map[[2]int]bool, gridW, gridH int) {
 	const (
-		playerH  = 4
-		stoneW   = 5
+		playerH = 4
+		stoneW  = 5
 		// With L1 islands now 1 block thick (only row 274), the free zone between
 		// L1 and GND is rows 275–281.
 		// Player standing on row R occupies rows R-playerH to R-1.
@@ -774,14 +791,14 @@ func naFindComponents(platforms []naPlatform) (comp []int, mainComp int) {
 
 // naMergeClose eliminates 1-block gaps between platforms in both directions:
 //
-//   Horizontal pass — for each row, fills gaps of ≤ 1 empty column between
-//   consecutive solid runs so two almost-touching platforms on the same row
-//   become one.
+//	Horizontal pass — for each row, fills gaps of ≤ 1 empty column between
+//	consecutive solid runs so two almost-touching platforms on the same row
+//	become one.
 //
-//   Vertical pass — for each column, if two solid cells are separated by
-//   exactly 1 empty row, fills that row.  This removes the thin 1-block
-//   "step" that appears when the graph places a child platform 1 row offset
-//   from an adjacent platform edge.
+//	Vertical pass — for each column, if two solid cells are separated by
+//	exactly 1 empty row, fills that row.  This removes the thin 1-block
+//	"step" that appears when the graph places a child platform 1 row offset
+//	from an adjacent platform edge.
 func naMergeClose(cells map[[2]int]bool, gridW, gridH int) {
 	// Horizontal pass.
 	for row := 0; row < gridH; row++ {

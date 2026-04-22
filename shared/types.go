@@ -15,8 +15,19 @@ const (
 	DefaultRaidMaxPlayers      = 4
 	DefaultGeneratedRoomWidth  = 16800.0
 	DefaultGeneratedRoomHeight = 4800.0
-	GeneratedRoomCountMin      = 6
-	GeneratedRoomCountMax      = 9
+	SessionRingGreenRooms      = 4
+	SessionRingRedRooms        = 2
+	SessionRingBlackRooms      = 3
+	SessionRingThroneRooms     = 1
+	SessionRingTotalRooms      = SessionRingGreenRooms + SessionRingRedRooms + SessionRingBlackRooms + SessionRingThroneRooms
+	GeneratedRoomCountMin      = SessionRingTotalRooms
+	GeneratedRoomCountMax      = SessionRingTotalRooms
+)
+
+const (
+	PlayerClassKnight         = "knight"
+	PlayerClassArcherAssassin = "archer_assassin"
+	PlayerClassForestCaster   = "forest_caster"
 )
 
 type Vec2 struct {
@@ -120,6 +131,8 @@ const (
 	EntityKindMob    EntityKind = "mob"
 	EntityKindBoss   EntityKind = "boss"
 	EntityKindMimic  EntityKind = "mimic"
+	EntityKindProp   EntityKind = "prop"
+	EntityKindRat    EntityKind = EntityKindMob
 )
 
 type Faction string
@@ -148,6 +161,89 @@ const (
 	PlayerRaidStatusExpired    PlayerRaidStatus = "expired"
 )
 
+type RingZone string
+
+const (
+	RingZoneGreen  RingZone = "green"
+	RingZoneRed    RingZone = "red"
+	RingZoneBlack  RingZone = "black"
+	RingZoneThrone RingZone = "throne"
+)
+
+type DeathPenalty string
+
+const (
+	DeathPenaltyRespawnKeepLoot   DeathPenalty = "respawn_keep_loot"
+	DeathPenaltyRespawnHalfLoot   DeathPenalty = "respawn_half_loot"
+	DeathPenaltyEliminateFullLoot DeathPenalty = "eliminate_full_loot"
+)
+
+func DeathPenaltyForZone(zone RingZone) DeathPenalty {
+	switch zone {
+	case RingZoneGreen:
+		return DeathPenaltyRespawnKeepLoot
+	case RingZoneRed:
+		return DeathPenaltyRespawnHalfLoot
+	default:
+		return DeathPenaltyEliminateFullLoot
+	}
+}
+
+// RingZoneForRoom maps a room index to its risk belt.
+// For canonical 10-room raids it is 4 green, 2 red, 3 black, 1 throne.
+// For smaller raids we scale bands proportionally and keep the last room throne.
+func RingZoneForRoom(index int, total int) RingZone {
+	if total <= 0 {
+		return RingZoneGreen
+	}
+	if index < 0 {
+		index = 0
+	}
+	if index >= total {
+		index = total - 1
+	}
+	if total >= SessionRingTotalRooms {
+		switch {
+		case index < SessionRingGreenRooms:
+			return RingZoneGreen
+		case index < SessionRingGreenRooms+SessionRingRedRooms:
+			return RingZoneRed
+		case index >= total-SessionRingThroneRooms:
+			return RingZoneThrone
+		default:
+			return RingZoneBlack
+		}
+	}
+
+	throneIndex := total - 1
+	if index >= throneIndex {
+		return RingZoneThrone
+	}
+
+	// Split non-throne rooms into 40% green, 20% red, 40% black.
+	nonThrone := total - 1
+	greenUntil := int(math.Ceil(float64(nonThrone) * 0.4))
+	redUntil := int(math.Ceil(float64(nonThrone) * 0.6))
+	if greenUntil < 1 {
+		greenUntil = 1
+	}
+	if redUntil <= greenUntil {
+		redUntil = greenUntil + 1
+	}
+	if redUntil > throneIndex {
+		redUntil = throneIndex
+	}
+
+	switch {
+	case index < greenUntil:
+		return RingZoneGreen
+	case index < redUntil:
+		return RingZoneRed
+	default:
+		return RingZoneBlack
+	}
+}
+
 type AbilityCooldown struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
@@ -171,6 +267,7 @@ type EntityState struct {
 	Name               string         `json:"name"`
 	Kind               EntityKind     `json:"kind"`
 	Faction            Faction        `json:"faction"`
+	ClassID            string         `json:"class_id,omitempty"`
 	ProfileID          string         `json:"profile_id"`
 	FamilyID           string         `json:"family_id,omitempty"`
 	RoomID             string         `json:"room_id,omitempty"`
@@ -324,6 +421,9 @@ type RoomState struct {
 	Name         string             `json:"name"`
 	TemplateID   string             `json:"template_id,omitempty"`
 	Biome        string             `json:"biome"`
+	RingZone     RingZone           `json:"ring_zone,omitempty"`
+	DeathPenalty DeathPenalty       `json:"death_penalty,omitempty"`
+	IsThrone     bool               `json:"is_throne,omitempty"`
 	Index        int                `json:"index"`
 	Bounds       Rect               `json:"bounds"`
 	BackgroundID string             `json:"background_id"`
@@ -331,6 +431,7 @@ type RoomState struct {
 	BelowRoomID  string             `json:"below_room_id,omitempty"`
 	AboveRoomID  string             `json:"above_room_id,omitempty"`
 	Solids       []Rect             `json:"solids"`
+	Backwalls    []Rect             `json:"backwalls,omitempty"`
 	Decorations  []PlacedAssetState `json:"decorations,omitempty"`
 	JumpLinks    []JumpLinkState    `json:"jump_links,omitempty"`
 	RevealZones  []RevealZoneState  `json:"reveal_zones,omitempty"`
@@ -352,6 +453,20 @@ func (layout RaidLayoutState) RoomByID(roomID string) (RoomState, bool) {
 		}
 	}
 	return RoomState{}, false
+}
+
+func (room RoomState) EffectiveRingZone(totalRooms int) RingZone {
+	if room.RingZone != "" {
+		return room.RingZone
+	}
+	return RingZoneForRoom(room.Index, totalRooms)
+}
+
+func (room RoomState) EffectiveDeathPenalty(totalRooms int) DeathPenalty {
+	if room.DeathPenalty != "" {
+		return room.DeathPenalty
+	}
+	return DeathPenaltyForZone(room.EffectiveRingZone(totalRooms))
 }
 
 type PlayerRaidState struct {
