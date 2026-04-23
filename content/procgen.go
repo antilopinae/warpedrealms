@@ -100,8 +100,8 @@ var DefaultPlayerPhysics = PlayerPhysicsConfig{
 
 // DefaultProcGenConfig is the baseline configuration used by GenerateRaidProcGen.
 var DefaultProcGenConfig = ProcGenConfig{
-	GridW:      200,
-	GridH:      150,
+	GridW:      400,
+	GridH:      300,
 	NumRooms:   shared.SessionRingTotalRooms,
 	MinPortals: 4,
 	MaxPortals: 7,

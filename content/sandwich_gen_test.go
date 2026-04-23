@@ -517,7 +517,7 @@ func TestSandwichInletShaftsHaveZigZagPlatforms(t *testing.T) {
 	sideGap := max(1, sgScaleX(3, cfg))
 	platformW := max(2, sgScaleX(3, cfg))
 	grid := makeBaseSandwichGrid(cfg.GridW, cfg.GridH, splitY)
-	inlet := sgBuildInlets(cfg.GridW, splitY)[0]
+	inlet := sgBuildInlets(cfg.GridW, splitY, cfg)[0]
 	shaft := sgCarveInletShaft(grid, inlet, splitY+40)
 	tags := sgNewSkyTagGrid(cfg.GridW, cfg.GridH)
 	sgAddInletZigZagPlatforms(grid, shaft, cfg, tags)
@@ -557,7 +557,7 @@ func TestSandwichGroundAirCorridorClearsOutsideWhitelist(t *testing.T) {
 	cfg.GridH = 150
 	splitY := cfg.GridH / 2
 	grid := makeBaseSandwichGrid(cfg.GridW, cfg.GridH, splitY)
-	inlets := sgBuildInlets(cfg.GridW, splitY)
+	inlets := sgBuildInlets(cfg.GridW, splitY, cfg)
 	stepW := max(2, sgScaleX(3, cfg))
 	corridorH := max(2, sgScaleY(10, cfg))
 
