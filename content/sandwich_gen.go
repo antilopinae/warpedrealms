@@ -260,8 +260,11 @@ func GenerateSandwichLocation(rng *rand.Rand, id string, cfg ProcGenConfig) Sand
 	sgApplySkyStrictAntiStacking(grid, skyTags, splitY, cfg)
 	sgApplyGroundAirCorridor(grid, splitY, cfg, inlets, skyDbg.Chains)
 	sgApplyTunnelHeadroom(grid, splitY, cfg)
-	sgEnsureGlobalPassableConnectivity(grid, splitY, cfg)
 	sgApplyTunnelHeadroom(grid, splitY, cfg)
+	sgEnsureJumpConnectivity(grid, splitY, cfg)
+	sgEnsureGlobalPassableConnectivity(grid, splitY, cfg)
+	sgEnsureGroundToSkyAccessibility(rng, grid, skyTags, skyDbg.Hubs, skyDbg.Chains, inlets, splitY, cfg)
+	sgAddSkyPenthouses(rng, grid, skyTags, skyDbg.Hubs, cfg)
 
 	solidCells := sgCellsForValue(grid, sgCellSolid)
 	spawnPoints := sgSpawnPointsFromInlets(inlets, cfg)
@@ -299,6 +302,465 @@ func GenerateSandwichLocation(rng *rand.Rand, id string, cfg ProcGenConfig) Sand
 		BackwallRects: GenerateRects(grid, sgCellBackwall),
 		PrimarySpawn:  primarySpawn,
 		SpawnPoints:   spawnPoints,
+	}
+}
+
+func sgEnsureJumpConnectivity(grid [][]int, splitY int, cfg ProcGenConfig) {
+	width := len(grid[0])
+	height := len(grid)
+
+	for iteration := 0; iteration < 20; iteration++ {
+		canEscape := make([][]bool, height)
+		for i := range canEscape {
+			canEscape[i] = make([]bool, width)
+		}
+
+		sgMarkReachable(grid, canEscape, splitY)
+
+		modified := false
+		// Сканируем снизу вверх, ищем изолированный пол
+		for y := height - 2; y > splitY; y-- {
+			for x := 1; x < width-1; x++ {
+				// Пол есть, а выхода нет
+				if grid[y][x] != sgCellSolid && grid[y+1][x] == sgCellSolid && !canEscape[y][x] {
+					sgDigToSafety(grid, canEscape, splitY, x, y)
+					modified = true
+					break
+				}
+			}
+			if modified {
+				break
+			}
+		}
+
+		if !modified {
+			break
+		}
+	}
+}
+
+// sgDigToSafety копает строгие прямоугольные коридоры и шахты.
+func sgDigToSafety(grid [][]int, canEscape [][]bool, splitY, startX, startY int) {
+	width := len(grid[0])
+	height := len(grid)
+
+	// 1. Ищем ближайшую безопасную точку (по воздуху и полу)
+	type point struct{ x, y int }
+	queue := []point{{startX, startY}}
+	visited := make([][]bool, height)
+	for i := range visited {
+		visited[i] = make([]bool, width)
+	}
+	visited[startY][startX] = true
+
+	var target *point
+	head := 0
+	for head < len(queue) {
+		curr := queue[head]
+		head++
+
+		if canEscape[curr.y][curr.x] {
+			target = &curr
+			break
+		}
+
+		dirs := []point{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
+		for _, d := range dirs {
+			nx, ny := curr.x+d.x, curr.y+d.y
+			if nx >= 1 && nx < width-1 && ny >= 1 && ny < height-1 && !visited[ny][nx] {
+				visited[ny][nx] = true
+				queue = append(queue, point{nx, ny})
+			}
+		}
+	}
+
+	if target == nil {
+		target = &point{startX, splitY + 2} // Резервный выход на поверхность
+	}
+
+	// 2. Копаем ВЕРТИКАЛЬНУЮ ШАХТУ ВВЕРХ
+	// Начинаем чуть выше пола ямы, чтобы гарантированно не разрушить пол
+	digStartY := startY - 2
+	if digStartY < 1 {
+		digStartY = 1
+	}
+	targetY := target.y - 1 // Целимся на уровень головы безопасной зоны
+	if targetY < 1 {
+		targetY = 1
+	}
+
+	stepY := -1
+	if targetY > digStartY {
+		stepY = 1 // Редкий случай: безопасная зона ниже ямы (падаем вниз)
+	}
+
+	// Ширина шахты = 6 блоков
+	for y := digStartY; y != targetY+stepY; y += stepY {
+		for dx := -2; dx <= 3; dx++ {
+			nx := startX + dx
+			if nx >= 1 && nx < width-1 && y >= 1 && y < height-1 {
+				if grid[y][nx] == sgCellSolid {
+					grid[y][nx] = sgCellBackwall
+				}
+			}
+		}
+	}
+
+	// 3. Копаем ГОРИЗОНТАЛЬНЫЙ ТУННЕЛЬ ВБОК
+	stepX := 1
+	if target.x < startX {
+		stepX = -1
+	}
+	// Туннель строго прямоугольный, высота 4 блока
+	for x := startX; x != target.x+stepX; x += stepX {
+		for dy := 0; dy < 4; dy++ {
+			ty := targetY - dy
+			if ty >= 1 && ty < height-1 && x >= 1 && x < width-1 {
+				if grid[ty][x] == sgCellSolid {
+					grid[ty][x] = sgCellBackwall
+				}
+			}
+		}
+	}
+
+	// 4. Если прорубили наверх — ставим зигзагообразные платформы
+	if targetY < startY-6 {
+		shaftLeft := startX - 2
+		shaftRight := startX + 2
+		platW := 2
+		sideLeft := true
+
+		for y := startY - 6; y >= targetY; y -= 6 {
+			platX := shaftLeft
+			if !sideLeft {
+				platX = shaftRight - platW + 1
+			}
+
+			if platX < 1 {
+				platX = 1
+			}
+			if platX+platW > width-1 {
+				platX = width - platW - 1
+			}
+
+			for i := 0; i < platW; i++ {
+				px := platX + i
+				if px >= 1 && px < width-1 {
+					grid[y][px] = sgCellSolid
+					// Прорубаем 3 блока воздуха строго над платформой для прыжка
+					for pDy := 1; pDy <= 3; pDy++ {
+						if y-pDy >= 1 {
+							grid[y-pDy][px] = sgCellBackwall
+						}
+					}
+				}
+			}
+			sideLeft = !sideLeft
+		}
+	}
+}
+
+func sgMarkReachable(grid [][]int, canEscape [][]bool, splitY int) {
+	width, height := len(grid[0]), len(grid)
+	pW, pH := 2, 4 // Реальные габариты игрока
+
+	// Проверка: влезет ли "тело" игрока 2х5 в точку x,y
+	canFit := func(x, y int) bool {
+		for dy := 0; dy < pH; dy++ {
+			for dx := 0; dx < pW; dx++ {
+				tx, ty := x+dx, y-dy
+				if ty < 0 || ty >= height || tx < 0 || tx >= width || grid[ty][tx] == sgCellSolid {
+					return false
+				}
+			}
+		}
+		return true
+	}
+
+	type point struct{ x, y int }
+	queue := []point{}
+
+	// Стартуем со всех проходимых точек на поверхности (splitY)
+	for x := 0; x < width-pW; x++ {
+		if canFit(x, splitY) {
+			canEscape[splitY][x] = true
+			queue = append(queue, point{x, splitY})
+		}
+	}
+
+	head := 0
+	for head < len(queue) {
+		curr := queue[head]
+		head++
+
+		// 1. ПЕРЕМЕЩЕНИЕ ПО ПОЛУ (влево-вправо)
+		for _, dx := range []int{-1, 1} {
+			nx := curr.x + dx
+			if nx >= 0 && nx < width-pW && canFit(nx, curr.y) && !canEscape[curr.y][nx] {
+				// Проверяем наличие пола под ногами игрока (2 блока ширины)
+				if grid[curr.y+1][nx] == sgCellSolid || grid[curr.y+1][nx+1] == sgCellSolid {
+					canEscape[curr.y][nx] = true
+					queue = append(queue, point{nx, curr.y})
+				}
+			}
+		}
+
+		// 2. ПРЫЖКИ (вертикаль до 7, горизонталь до 4)
+		for dy := -7; dy <= 7; dy++ {
+			for dx := -4; dx <= 4; dx++ {
+				nx, ny := curr.x+dx, curr.y+dy
+				if nx < 0 || nx >= width-pW || ny < pH || ny >= height-1 {
+					continue
+				}
+
+				if !canEscape[ny][nx] && canFit(nx, ny) {
+					// Приземление только на твердый пол
+					if grid[ny+1][nx] == sgCellSolid || grid[ny+1][nx+1] == sgCellSolid {
+						// Проверка траектории: не летим ли сквозь стену
+						if sgIsJumpPathClear(grid, curr.x, curr.y, nx, ny, pW, pH) {
+							canEscape[ny][nx] = true
+							queue = append(queue, point{nx, ny})
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// Упрощенная проверка: чист ли прямоугольник между точками прыжка
+func sgIsJumpPathClear(grid [][]int, x1, y1, x2, y2, pW, pH int) bool {
+	minX, maxX := min(x1, x2), max(x1, x2)
+	minY, maxY := min(y1, y2)-2, max(y1, y2) // -2 блока запаса над головой для дуги
+	for tx := minX; tx <= maxX+pW-1; tx++ {
+		for ty := minY; ty <= maxY; ty++ {
+			if tx < 0 || tx >= len(grid[0]) || ty < 0 || ty >= len(grid) {
+				return false
+			}
+			if grid[ty][tx] == sgCellSolid {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func sgEnsureGroundToSkyAccessibility(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, hubs []sgSkyHub, chains []sgStairChain, inlets []sgInlet, splitY int, cfg ProcGenConfig) {
+	if len(grid) == 0 {
+		return
+	}
+	stepW := max(2, sgScaleX(3, cfg))
+
+	// Прогоняем существующие цепочки
+	for i := range chains {
+		sgExtendChainToGround(rng, &chains[i], grid, tags, inlets, splitY, stepW, 0, 0)
+	}
+
+	// Гарантируем спуск для хабов, если у них нет цепочек
+	for hubIdx, hub := range hubs {
+		hasLeft, hasRight := false, false
+		for _, ch := range chains {
+			if ch.HubIndex == hubIdx {
+				if ch.Side == sgStairSideLeft {
+					hasLeft = true
+				}
+				if ch.Side == sgStairSideRight {
+					hasRight = true
+				}
+			}
+		}
+
+		if !hasLeft {
+			newChain := sgStairChain{HubIndex: hubIdx, Side: sgStairSideLeft, TrendDir: -1,
+				ObjectID: tags.NewObject(sgSkyObjectSkyStepLeft),
+				Steps:    []sgPoint{{X: hub.X, Y: hub.Y + hub.H - 1}}}
+			sgExtendChainToGround(rng, &newChain, grid, tags, inlets, splitY, stepW, 0, 0)
+		}
+		if !hasRight {
+			newChain := sgStairChain{HubIndex: hubIdx, Side: sgStairSideRight, TrendDir: 1,
+				ObjectID: tags.NewObject(sgSkyObjectSkyStepRight),
+				Steps:    []sgPoint{{X: hub.X + hub.W - stepW, Y: hub.Y + hub.H - 1}}}
+			sgExtendChainToGround(rng, &newChain, grid, tags, inlets, splitY, stepW, 0, 0)
+		}
+	}
+}
+
+func sgFindDynamicGroundY(grid [][]int, x int, splitY int) int {
+	gridH := len(grid)
+	if x < 0 || x >= len(grid[0]) {
+		return gridH - 1
+	}
+	// Начинаем искать от splitY (уровень поверхности) вниз
+	for y := splitY; y < gridH; y++ {
+		if grid[y][x] == sgCellSolid {
+			return y
+		}
+	}
+	return gridH - 1
+}
+
+func sgSmoothConnectToGround(grid [][]int, x, y, stepW int) {
+	gridH := len(grid)
+	gridW := len(grid[0])
+
+	for dx := 0; dx < stepW; dx++ {
+		nx := x + dx
+		if nx < 0 || nx >= gridW {
+			continue
+		}
+
+		// Ищем пол строго под этим пикселем (startY = y + 1)
+		// Передаем y как splitY, чтобы искать только вниз от платформы
+		gy := sgFindDynamicGroundY(grid, nx, y+1)
+
+		dist := gy - y
+		// Если до земли 1, 2 или 3 блока — заливаем монолитом
+		if dist > 1 && dist <= 4 {
+			for fillY := y + 1; fillY < gy; fillY++ {
+				if fillY < gridH {
+					grid[fillY][nx] = sgCellSolid
+				}
+			}
+		}
+	}
+}
+
+func sgExtendChainToGround(rng *rand.Rand, ch *sgStairChain, grid [][]int, tags *sgSkyTagGrid, inlets []sgInlet, splitY, stepW, _, _ int) {
+	if len(ch.Steps) == 0 {
+		return
+	}
+
+	gridW := len(grid[0])
+	curr := ch.Steps[len(ch.Steps)-1]
+
+	vJump := 6         // Прыжок вниз на 6 блоков
+	hMin, hMax := 2, 4 // Сдвиг вбок минимален (2-4 блока)
+	stopDist := 6      // Останавливаемся в 6 блоках от пола (чтобы игрок прошел под ней)
+
+	for {
+		// 1. Ищем РЕАЛЬНУЮ землю под следующим шагом (учитывая туннели)
+		nx := curr.X + ch.TrendDir*(hMin+rng.Intn(hMax-hMin+1))
+		nx = sgClamp(nx, 2, gridW-stepW-2)
+
+		realGroundY := sgFindDynamicGroundY(grid, nx, splitY)
+
+		// 2. Рассчитываем Y следующей ступеньки
+		ny := curr.Y + vJump
+
+		// Если мы слишком близко к полу - ограничиваем высоту до предела прыжка
+		if ny > realGroundY-stopDist {
+			ny = realGroundY - stopDist
+		}
+
+		// Если ny выше или на уровне текущей точки (уперлись в холм) — стоп
+		if ny <= curr.Y || ny >= realGroundY {
+			sgSmoothConnectToGround(grid, curr.X, curr.Y, stepW) // Приклеиваем последнюю точку
+			break
+		}
+
+		// 3. Ставим платформу
+		sgWriteSolidRect(grid, nx, ny, stepW, 1)
+
+		// Сразу проверяем плавное соединение с землей (1-2 блока)
+		sgSmoothConnectToGround(grid, nx, ny, stepW)
+
+		if tags != nil && ch.ObjectID > 0 {
+			kind := sgSkyObjectSkyStepLeft
+			if ch.Side == sgStairSideRight {
+				kind = sgSkyObjectSkyStepRight
+			}
+			tags.MarkRect(nx, ny, stepW, 1, ch.ObjectID, kind)
+		}
+
+		curr = sgPoint{X: nx, Y: ny}
+		ch.Steps = append(ch.Steps, curr)
+
+		// Если мы уже на высоте прыжка от реальной земли — выходим
+		if curr.Y >= realGroundY-stopDist {
+			break
+		}
+		if len(ch.Steps) > 40 {
+			break
+		}
+	}
+}
+
+func sgAddSkyPenthouses(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, hubs []sgSkyHub, cfg ProcGenConfig) {
+	if tags == nil || len(hubs) == 0 {
+		return
+	}
+
+	minTopMargin := 10
+	stackChance := 0.6
+	floorH := 2
+
+	for _, hub := range hubs {
+		currY, currX, currW := hub.Y, hub.X, hub.W
+
+		for rng.Float64() < stackChance {
+			vDist := 15 + rng.Intn(6)
+			newY := currY - vDist - floorH
+			if newY < minTopMargin {
+				break
+			}
+
+			newW := currW - rng.Intn(4)
+			if newW < 12 {
+				newW = 12
+			}
+			newX := currX + (currW-newW)/2
+
+			// Рисуем основной этаж (2 блока толщиной)
+			objID := tags.NewObject(sgSkyObjectHub)
+			sgWriteSolidRect(grid, newX, newY, newW, floorH)
+			tags.MarkRect(newX, newY, newW, floorH, objID, sgSkyObjectHub)
+
+			// ГЕНЕРИРУЕМ ЛЕСТНИЦЫ С ДВУХ СТОРОН
+			landingW := 8
+			gap := 3
+			stepID := tags.NewObject(sgSkyObjectSkyStepLeft)
+
+			for _, side := range []int{-1, 1} {
+				var lx int
+				if side == 1 {
+					// Справа от самого широкого края
+					lx = max(currX+currW, newX+newW) + gap
+				} else {
+					// Слева от самого широкого края
+					lx = min(currX, newX) - landingW - gap
+				}
+
+				// Проверяем границы карты для этой стороны
+				if lx > 2 && lx < len(grid[0])-landingW-2 {
+					// Расставляем по 2 платформы на каждой стороне
+					h1 := vDist / 3
+					h2 := (vDist * 2) / 3
+
+					for idx, dy := range []int{h1, h2} {
+						py := currY - dy
+
+						// Небольшая асимметрия для красоты:
+						// Левая и правая стороны будут чуть-чуть смещены по высоте относительно друг друга
+						if side == -1 {
+							py -= 1
+						}
+
+						sgWriteSolidRect(grid, lx, py, landingW, 1)
+						tags.MarkRect(lx, py, landingW, 1, stepID, sgSkyObjectSkyStepLeft)
+
+						// Ступеньки на одной стороне идут лесенкой вглубь или наружу
+						if idx == 0 {
+							lx += side * 2
+						} else {
+							lx -= side * 1
+						}
+					}
+				}
+			}
+
+			// Теперь этот этаж база для следующего
+			currY, currX, currW = newY, newX, newW
+		}
 	}
 }
 
@@ -345,26 +807,31 @@ func sgPopulateSkyAndObjectsWithTags(rng *rand.Rand, grid [][]int, cfg ProcGenCo
 		return sgSkyDebugData{}
 	}
 
-	gridH := len(grid)
-	gridW := len(grid[0])
+	gridW, gridH := len(grid[0]), len(grid)
+
+	// Получаем параметры. 4-й аргумент (extra steps) игнорируем, он нам больше не нужен.
 	skyBandH, skyArea, hubCount, extraStepCount := sgSkyDensity(cfg, gridW, gridH, splitY)
+
 	dbg := sgSkyDebugData{
-		SkyBandH:       skyBandH,
-		SkyArea:        skyArea,
-		HubCount:       hubCount,
-		ExtraStepCount: extraStepCount,
-		Tags:           tags,
+		SkyBandH: skyBandH,
+		SkyArea:  skyArea,
+		HubCount: hubCount,
+		Tags:     tags,
 	}
 
 	if hubCount <= 0 || splitY <= 2 {
 		return dbg
 	}
 
+	// Зона размещения основных островов
 	skyTopMin := sgClamp(sgScaleY(25, cfg), 2, max(2, splitY-8))
 	skyTopMax := sgClamp(sgScaleY(55, cfg), skyTopMin, max(skyTopMin, splitY-4))
+
+	// 1. Размещаем основные хабы (летающие острова)
 	hubs := sgPlaceSkyHubs(rng, grid, tags, hubCount, skyTopMin, skyTopMax, splitY, cfg)
 	dbg.Hubs = append(dbg.Hubs, hubs...)
 
+	// 2. Генерируем только крутые начальные "хвосты" для каждого хаба
 	chains := make([]sgStairChain, 0, len(hubs)*2)
 	wingRefs := make([]sgSkyWingRefs, len(hubs))
 	for i := range wingRefs {
@@ -379,10 +846,11 @@ func sgPopulateSkyAndObjectsWithTags(rng *rand.Rand, grid [][]int, cfg ProcGenCo
 		wingRefs[i].RightIdx = len(chains)
 		chains = append(chains, right)
 	}
+
 	extraPlaced := sgDistributeExtraSkySteps(rng, grid, tags, chains, extraStepCount, splitY, cfg)
-	gapPlatforms := sgAddSkyGapPlatformsWithTags(grid, tags, hubs, chains, wingRefs, splitY, cfg)
+	// gapPlatforms := sgAddSkyGapPlatformsWithTags(grid, tags, hubs, chains, wingRefs, splitY, cfg)
 	dbg.ExtraPlaced = extraPlaced
-	dbg.GapPlatforms = gapPlatforms
+	// dbg.GapPlatforms = gapPlatforms
 	dbg.Chains = chains
 	return dbg
 }
@@ -411,7 +879,7 @@ func sgPlaceSkyHubs(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, hubCount i
 	gridW := len(grid[0])
 	minW := max(8, sgScaleX(30, cfg))
 	maxW := max(minW, sgScaleX(50, cfg))
-	minH := max(1, sgScaleY(2, cfg))
+	minH := max(2, sgScaleY(2, cfg))
 	maxH := max(minH, sgScaleY(3, cfg))
 
 	hubs := make([]sgSkyHub, 0, hubCount)
@@ -486,170 +954,46 @@ func sgBuildSkyStaircaseWing(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, h
 		trend = 1
 		kind = sgSkyObjectSkyStepRight
 	}
-	objectID := 0
-	if tags != nil {
-		objectID = tags.NewObject(kind)
-	}
+
+	objectID := tags.NewObject(kind)
 	chain := sgStairChain{
 		HubIndex: hubIndex,
 		Side:     side,
 		TrendDir: trend,
 		ObjectID: objectID,
 	}
-	if len(grid) == 0 || len(grid[0]) == 0 {
-		return chain
-	}
 
 	gridW := len(grid[0])
-	gridH := len(grid)
 	stepW := max(2, sgScaleX(3, cfg))
-	dxMin := max(stepW+1, sgScaleX(7, cfg))
-	dxMax := max(dxMin, sgScaleX(10, cfg))
-	dy := max(2, sgScaleY(6, cfg))
-	minGap := max(1, sgScaleX(4, cfg))
-	projectionH := max(2, sgScaleY(10, cfg))
-	nearR := max(2, min(sgScaleX(6, cfg), sgScaleY(6, cfg)))
+
+	// ПАРАМЕТРЫ КРУТИЗНЫ:
+	dy := 6               // Прыжок вниз почти на максимум (7)
+	dx := 2 + rng.Intn(2) // Сдвиг вбок всего на 2-3 блока
 
 	anchorX := hub.X
 	if side == sgStairSideRight {
 		anchorX = hub.X + hub.W - 1
 	}
-	x := anchorX
-	y := hub.Y
 
-	ignore := make(map[[2]int]bool, hub.W*hub.H+64)
-	for yy := hub.Y; yy < hub.Y+hub.H; yy++ {
-		for xx := hub.X; xx < hub.X+hub.W; xx++ {
-			ignore[[2]int{xx, yy}] = true
-		}
-	}
+	// Стартуем от нижнего края хаба (учитывая, что он теперь 2 блока толщиной)
+	x, y := anchorX, hub.Y+hub.H-1
 
-	maxSteps := max(8, (splitY-y)/max(1, dy)+18)
-	for i := 0; i < maxSteps && y < splitY+dy; i++ {
-		dxAbs := dxMin
-		if dxMax > dxMin {
-			dxAbs += rng.Intn(dxMax - dxMin + 1)
-		}
-		x += trend * dxAbs
+	// Генерируем только 3 начальные ступеньки.
+	// Этого достаточно, чтобы "зацепить" цепочку, а остальное достроит
+	// алгоритм доступности, который видит реальный пол (пещеры и т.д.)
+	for i := 0; i < 3; i++ {
+		x += trend * dx
 		y += dy
 
-		x = sgClamp(x, 1, max(1, gridW-stepW-1))
-		if y >= gridH-1 || y >= splitY {
+		if y >= splitY-5 || x < 2 || x >= gridW-stepW-2 {
 			break
 		}
-		var prev *sgPoint
-		if len(chain.Steps) > 0 {
-			prev = &chain.Steps[len(chain.Steps)-1]
-		}
-		placedX, ok := sgTryPlaceSkyStepConstrained(grid, tags, x, y, stepW, trend, objectID, kind, projectionH, minGap, dxMin, dxMax, prev, splitY)
-		if !ok {
-			continue
-		}
 
-		chain.Steps = append(chain.Steps, sgPoint{X: placedX, Y: y})
-		for xx := placedX; xx < placedX+stepW; xx++ {
-			ignore[[2]int{xx, y}] = true
-		}
-		if sgHasExternalSolidNearby(grid, placedX, y, stepW, 1, nearR, ignore) {
-			chain.Connected = true
-			break
-		}
+		sgWriteSolidRect(grid, x, y, stepW, 1)
+		tags.MarkRect(x, y, stepW, 1, objectID, kind)
+		chain.Steps = append(chain.Steps, sgPoint{X: x, Y: y})
 	}
 
-	if !chain.Connected {
-		for y < splitY-1 {
-			dxAbs := dxMin
-			if dxMax > dxMin {
-				dxAbs += rng.Intn(dxMax - dxMin + 1)
-			}
-			x += trend * dxAbs
-			y += dy
-			if y >= gridH-1 || y >= splitY {
-				break
-			}
-			var prev *sgPoint
-			if len(chain.Steps) > 0 {
-				prev = &chain.Steps[len(chain.Steps)-1]
-			}
-			placedX, ok := sgTryPlaceSkyStepConstrained(grid, tags, x, y, stepW, trend, objectID, kind, projectionH, minGap, dxMin, dxMax, prev, splitY)
-			if !ok {
-				placedX = sgClamp(x, 1, max(1, gridW-stepW-1))
-				if y >= 1 && y < splitY {
-					sgWriteSolidRect(grid, placedX, y, stepW, 1)
-					if tags != nil && objectID > 0 {
-						tags.MarkRect(placedX, y, stepW, 1, objectID, kind)
-					}
-				}
-			}
-			chain.Steps = append(chain.Steps, sgPoint{X: placedX, Y: y})
-			for xx := placedX; xx < placedX+stepW; xx++ {
-				ignore[[2]int{xx, y}] = true
-			}
-		}
-		if len(chain.Steps) > 0 {
-			chain.Connected = true
-		}
-	}
-
-	if len(chain.Steps) == 0 {
-		fallbackY := sgClamp(hub.Y+dy, 1, max(1, splitY-1))
-		baseX := sgClamp(anchorX+trend*dxMin, 1, max(1, gridW-stepW-1))
-		candidates := []int{baseX, baseX + trend*minGap, baseX - trend*minGap}
-		for _, cx := range candidates {
-			placedX, ok := sgTryPlaceSkyStepConstrained(grid, tags, cx, fallbackY, stepW, trend, objectID, kind, projectionH, minGap, 0, dxMax, nil, splitY)
-			if !ok {
-				continue
-			}
-			chain.Steps = append(chain.Steps, sgPoint{X: placedX, Y: fallbackY})
-			chain.Connected = true
-			for xx := placedX; xx < placedX+stepW; xx++ {
-				ignore[[2]int{xx, fallbackY}] = true
-			}
-			break
-		}
-	}
-	if len(chain.Steps) > 0 {
-		last := chain.Steps[len(chain.Steps)-1]
-		maxX := max(1, gridW-stepW-1)
-		for last.Y+dy < splitY {
-			ny := last.Y + dy
-			nx := -1
-			for dx := dxMin; dx <= dxMax; dx++ {
-				cand := last.X + trend*dx
-				if cand < 1 || cand > maxX {
-					continue
-				}
-				nx = cand
-				break
-			}
-			if nx < 0 {
-				cand := last.X - trend*dxMin
-				if cand >= 1 && cand <= maxX {
-					nx = cand
-				} else {
-					nx = sgClamp(last.X+trend*dxMin, 1, maxX)
-				}
-			}
-			sgWriteSolidRect(grid, nx, ny, stepW, 1)
-			if tags != nil && objectID > 0 {
-				tags.MarkRect(nx, ny, stepW, 1, objectID, kind)
-			}
-			chain.Steps = append(chain.Steps, sgPoint{X: nx, Y: ny})
-			for xx := nx; xx < nx+stepW; xx++ {
-				ignore[[2]int{xx, ny}] = true
-			}
-			last = chain.Steps[len(chain.Steps)-1]
-			if ny >= splitY-1 {
-				break
-			}
-		}
-	}
-	if len(chain.Steps) > 0 {
-		last := chain.Steps[len(chain.Steps)-1]
-		chain.Connected = last.Y >= splitY-1 || sgHasExternalSolidNearby(grid, last.X, last.Y, stepW, 1, nearR, ignore)
-	}
-
-	chain.BaseSteps = len(chain.Steps)
 	return chain
 }
 
@@ -657,6 +1001,12 @@ func sgDistributeExtraSkySteps(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid,
 	if extraStepCount <= 0 || len(chains) == 0 {
 		return 0
 	}
+
+	// Устанавливаем "небесную границу".
+	// Не генерируем случайные шаги ниже, чем 10 блоков до земли,
+	// чтобы оставить пространство для бега и не плодить горизонтальные цепочки.
+	skyBoundaryY := splitY - 10
+
 	placed := 0
 	cursor := 0
 	if len(chains) > 1 {
@@ -667,7 +1017,40 @@ func sgDistributeExtraSkySteps(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid,
 		ok := false
 		for attempt := 0; attempt < len(chains)*10; attempt++ {
 			idx := (cursor + attempt) % len(chains)
-			if sgAppendExtraSkyStep(rng, grid, tags, &chains[idx], splitY, cfg) {
+			chain := &chains[idx]
+
+			// ПРОВЕРКА: Если цепочка уже внизу, не добавляем ей мусора
+			if len(chain.Steps) > 0 {
+				lastY := chain.Steps[len(chain.Steps)-1].Y
+				if lastY >= skyBoundaryY {
+					continue
+				}
+			}
+
+			// Пытаемся добавить шаг
+			if sgAppendExtraSkyStep(rng, grid, tags, chain, splitY, cfg) {
+				// Дополнительная проверка безопасности: если новый шаг все же
+				// оказался слишком низко, мы его удаляем.
+				lastIdx := len(chain.Steps) - 1
+				newStep := chain.Steps[lastIdx]
+
+				if newStep.Y >= skyBoundaryY {
+					// Удаляем блок из сетки и из тегов
+					stepW := max(2, sgScaleX(3, cfg))
+					for dx := 0; dx < stepW; dx++ {
+						nx := newStep.X + dx
+						if nx >= 0 && nx < len(grid[0]) {
+							grid[newStep.Y][nx] = sgCellAir
+							if tags != nil {
+								tags.ClearCell(nx, newStep.Y)
+							}
+						}
+					}
+					// Убираем из массива цепочки
+					chain.Steps = chain.Steps[:lastIdx]
+					continue
+				}
+
 				placed++
 				cursor = (idx + 1) % len(chains)
 				ok = true
@@ -1635,38 +2018,43 @@ func sgApplyGroundAirCorridor(grid [][]int, splitY int, cfg ProcGenConfig, inlet
 	corridorH := max(2, sgScaleY(10, cfg))
 	y0 := max(0, splitY-corridorH)
 	y1 := min(splitY-1, len(grid)-1)
-	if y0 > y1 {
-		return
+
+	// Массив для пометки блоков, которые НЕЛЬЗЯ удалять
+	keep := make([][]bool, len(grid))
+	for i := range keep {
+		keep[i] = make([]bool, gridW)
 	}
 
-	preserveX := make([]bool, gridW)
+	// 1. Помечаем зоны входов в пещеры (их не трогаем)
 	for _, inlet := range inlets {
 		left := sgClamp(inlet.CenterX-inlet.Width/2-1, 0, gridW-1)
-		right := sgClamp(left+inlet.Width+2, 0, gridW-1)
+		right := sgClamp(left+inlet.Width+1, 0, gridW-1)
 		for x := left; x <= right; x++ {
-			preserveX[x] = true
+			for y := y0; y <= y1; y++ {
+				keep[y][x] = true
+			}
 		}
 	}
 
+	// 2. Помечаем ВСЕ блоки всех ступенек в цепочках
 	stepW := max(2, sgScaleX(3, cfg))
 	for _, chain := range chains {
-		if len(chain.Steps) == 0 || chain.BaseSteps <= 0 {
-			continue
-		}
-		last := chain.Steps[chain.BaseSteps-1]
-		if splitY-last.Y > corridorH+2 {
-			continue
-		}
-		left := sgClamp(last.X-1, 0, gridW-1)
-		right := sgClamp(last.X+stepW, 0, gridW-1)
-		for x := left; x <= right; x++ {
-			preserveX[x] = true
+		for _, step := range chain.Steps {
+			if step.Y >= y0 && step.Y <= y1 {
+				for dx := 0; dx < stepW; dx++ {
+					nx := step.X + dx
+					if nx >= 0 && nx < gridW {
+						keep[step.Y][nx] = true
+					}
+				}
+			}
 		}
 	}
 
+	// 3. Удаляем только то, что не помечено как "нужное"
 	for y := y0; y <= y1; y++ {
 		for x := 0; x < gridW; x++ {
-			if preserveX[x] {
+			if keep[y][x] {
 				continue
 			}
 			if grid[y][x] == sgCellSolid {

@@ -11,7 +11,7 @@ const (
 	InterpolationBackTime      = 0.10
 	ScreenWidth                = 1280
 	ScreenHeight               = 720
-	DefaultRaidDuration        = 480.0
+	DefaultRaidDuration        = 4800.0
 	DefaultRaidMaxPlayers      = 4
 	DefaultGeneratedRoomWidth  = 16800.0
 	DefaultGeneratedRoomHeight = 4800.0
