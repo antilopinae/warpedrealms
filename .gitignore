@@ -8,3 +8,4 @@ trash-assets/
 gamedata/sessions/*
 dist/
 vendor/
+content/gamedata/
