@@ -28,6 +28,13 @@ const (
 	screenSettings
 )
 
+type inputKeyOverlay struct {
+	action Action
+	rect   shared.Rect
+	label  string
+	img    *ebiten.Image // Предварительно отрисованный текст
+}
+
 type Game struct {
 	baseURL  string
 	bundle   *content.Bundle
@@ -50,16 +57,17 @@ type Game struct {
 	bindingCapturePrimed bool
 	settingsStatus       string
 
-	token         string
-	raids         []shared.RaidSummary
-	selectedRaid  int
-	selectedClass int
-	currentRaidID string
-	currentRaid   shared.RaidState
-	hasRaidState  bool
-	currentLayout shared.RaidLayoutState
-	hasLayout     bool
-	layoutSolids  map[string][]shared.Rect // roomID → solids; never cross-room
+	token           string
+	raids           []shared.RaidSummary
+	selectedRaid    int
+	selectedClass   int
+	currentRaidID   string
+	currentRaid     shared.RaidState
+	hasRaidState    bool
+	currentLayout   shared.RaidLayoutState
+	hasLayout       bool
+	layoutSolids    map[string][]shared.Rect // roomID → solids; never cross-room
+	layoutPlatforms map[string][]shared.Rect // roomID → one-way platforms
 
 	localPlayer      shared.EntityState
 	localReady       bool
@@ -84,6 +92,13 @@ type Game struct {
 	worldScale   float64
 	startedAt    time.Time
 	debugPhysics bool
+
+	inputOverlayKeys []inputKeyOverlay
+	whitePixelImg    *ebiten.Image
+
+	// bots[0] roams the background room (BelowRoomID of the active room).
+	// bots[1] roams the same room as the local player.
+	bots [2]*LocalBot
 }
 
 func NewGame(baseURL string, manifestPath string, roomsDir string) (*Game, error) {
@@ -123,9 +138,49 @@ func NewGame(baseURL string, manifestPath string, roomsDir string) (*Game, error
 		interpolators:  make(map[string]*Interpolator),
 		worldScale:     float64(shared.ScreenHeight) / 480.0,
 		startedAt:      time.Now(),
+		bots: [2]*LocalBot{
+			NewLocalBot("__bot_bg__", "Bot-BG"), // [0] background room
+			NewLocalBot("__bot_fg__", "Bot-FG"), // [1] same room as player
+		},
 	}
 	game.syncSelectedClass()
 	game.updateViewOffset()
+
+	// 1. Создаем белый пиксель (замена пакету vector)
+	game.whitePixelImg = ebiten.NewImage(1, 1)
+	game.whitePixelImg.Fill(color.White)
+
+	// 2. Настраиваем кнопки
+	baseX, baseY := float64(shared.ScreenWidth)-220.0, float64(shared.ScreenHeight)-150.0
+
+	// Вспомогательный список для инициализации
+	tempKeys := []struct {
+		act        Action
+		x, y, w, h float64
+		lbl        string
+	}{
+		{ActionJump, 60, 0, 50, 40, "JMP"},
+		{ActionMoveLeft, 0, 45, 50, 40, "A"},
+		{ActionDropDown, 60, 45, 50, 40, "S"},
+		{ActionMoveRight, 120, 45, 50, 40, "D"},
+		{ActionAttack, 0, 95, 80, 35, "ATK"},
+		{ActionSkill1, 90, 95, 80, 35, "SKL"},
+	}
+
+	game.inputOverlayKeys = make([]inputKeyOverlay, len(tempKeys))
+	for i, k := range tempKeys {
+		// Создаем картинку для текста (размером с кнопку)
+		txtImg := ebiten.NewImage(int(k.w), int(k.h))
+		ebitenutil.DebugPrintAt(txtImg, k.lbl, 10, 12) // Рисуем текст ОДИН РАЗ
+
+		game.inputOverlayKeys[i] = inputKeyOverlay{
+			action: k.act,
+			rect:   shared.Rect{X: baseX + k.x, Y: baseY + k.y, W: k.w, H: k.h},
+			label:  k.lbl,
+			img:    txtImg,
+		}
+	}
+
 	return game, nil
 }
 
@@ -402,9 +457,13 @@ func (g *Game) updateGame() {
 	}
 
 	if g.localPlayer.Travel == nil || !g.localPlayer.Travel.Active {
-		shared.SimulatePlayer(&g.localPlayer, command, g.solidsForPlayer())
+		shared.SimulatePlayer(&g.localPlayer, command, g.solidsForPlayer(), g.platformsForPlayer())
 	}
 	shared.RefreshAnimation(&g.localPlayer, now)
+
+	// ── Bot updates ────────────────────────────────────────────────────────────
+	g.updateBots(now)
+
 	if err := g.network.SendInputs(g.pendingInput); err != nil {
 		g.status = err.Error()
 	}
@@ -413,6 +472,81 @@ func (g *Game) updateGame() {
 		g.lastPingAt = time.Now()
 	}
 	g.updateCamera()
+}
+
+// realPlayersInRoom returns the number of real (non-local) players currently
+// in roomID according to the latest interpolated snapshot data.
+// Bots are excluded by their ID prefix.
+func (g *Game) realPlayersInRoom(roomID string, targetTime float64) int {
+	count := 0
+	for id, interp := range g.interpolators {
+		// Skip the local player and client-side bots.
+		if id == g.localID || id == "__bot_bg__" || id == "__bot_fg__" {
+			continue
+		}
+		state, ok := interp.Sample(targetTime)
+		if !ok {
+			continue
+		}
+		if state.Kind == shared.EntityKindPlayer && state.RoomID == roomID {
+			count++
+		}
+	}
+	return count
+}
+
+// updateBots assigns rooms to the two bots and ticks their AI + physics.
+//
+//   - bots[0]: background room (BelowRoomID of the active room).
+//   - bots[1]: same room as the local player.
+//
+// A bot is active only when NO other real player is in its assigned room.
+// Each client independently checks the interpolated entity list it received
+// from the server, so all clients agree on who is alone.
+func (g *Game) updateBots(now float64) {
+	if !g.localReady || g.layoutSolids == nil {
+		return
+	}
+	activeRoomID := g.localPlayer.RoomID
+	if activeRoomID == "" {
+		return
+	}
+	activeRoom, ok := g.currentLayout.RoomByID(activeRoomID)
+	if !ok {
+		return
+	}
+	targetTime := now - shared.InterpolationBackTime
+
+	// Bot 0 → background room: RevealZone target (when near a portal) or BelowRoomID.
+	// This matches exactly which room DrawScene renders in the background layer.
+	bgRoomID := g.revealBgRoomID(activeRoomID)
+	if bgRoomID == "" {
+		bgRoomID = activeRoom.BelowRoomID
+	}
+	if bgRoomID != "" {
+		if bgRoom, ok := g.currentLayout.RoomByID(bgRoomID); ok {
+			bgSolids := g.layoutSolids[bgRoom.ID]
+			bgPlatforms := g.layoutPlatforms[bgRoom.ID]
+			if g.realPlayersInRoom(bgRoom.ID, targetTime) == 0 {
+				g.bots[0].AssignRoom(bgRoom.ID, bgRoom, g.localPlayer, now, bgSolids, bgPlatforms)
+				g.bots[0].Update(now, bgRoom, bgSolids, bgPlatforms)
+			} else {
+				g.bots[0].Deactivate()
+			}
+		}
+	} else {
+		g.bots[0].Deactivate()
+	}
+
+	// Bot 1 → same room as local player (only when no other real players here).
+	fgSolids := g.layoutSolids[activeRoom.ID]
+	fgPlatforms := g.layoutPlatforms[activeRoom.ID]
+	if g.realPlayersInRoom(activeRoom.ID, targetTime) == 0 {
+		g.bots[1].AssignRoom(activeRoom.ID, activeRoom, g.localPlayer, now, fgSolids, fgPlatforms)
+		g.bots[1].Update(now, activeRoom, fgSolids, fgPlatforms)
+	} else {
+		g.bots[1].Deactivate()
+	}
 }
 
 func (g *Game) beginAuth() {
@@ -557,6 +691,7 @@ func (g *Game) resetRaidState() {
 	g.currentLayout = shared.RaidLayoutState{}
 	g.hasLayout = false
 	g.layoutSolids = nil
+	g.layoutPlatforms = nil
 
 }
 
@@ -581,6 +716,7 @@ func (g *Game) captureInput() shared.InputCommand {
 		Skill3:        g.controls.JustPressed(ActionSkill3),
 		Interact:      g.controls.JustPressed(ActionInteract),
 		UseJumpLink:   g.controls.JustPressed(ActionUseJumpLink),
+		DropDown:      g.controls.JustPressed(ActionDropDown),
 		AimX:          worldAim.X,
 		AimY:          worldAim.Y,
 		ClientTime:    g.clientTime(),
@@ -678,9 +814,17 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	g.renderer.DrawScene(screen, g.currentLayout, activeRoomID, g.camera, g.viewOffset, g.worldScale, g.currentPreview(), g.revealBgRoomID(activeRoomID))
 	g.drawLoot(screen)
 
-	entities := make([]shared.EntityState, 0, len(g.interpolators)+1)
+	entities := make([]shared.EntityState, 0, len(g.interpolators)+3)
 	if g.localReady {
 		entities = append(entities, g.localPlayer.Clone())
+	}
+	// Add all active bots to the entity list.
+	// DrawLowerEntities will pick up background-room bots (it filters by belowRoom.ID).
+	// The foreground draw loop below skips entities not in the active room.
+	for _, bot := range g.bots {
+		if bot.IsActive() {
+			entities = append(entities, bot.Entity())
+		}
 	}
 	targetTime := g.estimatedServerTime() - shared.InterpolationBackTime
 	for id, interpolator := range g.interpolators {
@@ -694,17 +838,60 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		entities = append(entities, state)
 	}
 	// Draw below-room entities (players + rats) as semi-transparent ghosts.
-	g.renderer.DrawLowerEntities(screen, g.currentLayout, activeRoomID, entities, g.camera, g.viewOffset, g.worldScale)
+	// Use the same bgRoomID that DrawScene renders: RevealZone target or BelowRoomID.
+	bgRoomID := g.revealBgRoomID(activeRoomID)
+	if bgRoomID == "" {
+		if ar, ok := g.currentLayout.RoomByID(activeRoomID); ok {
+			bgRoomID = ar.BelowRoomID
+		}
+	}
+	g.renderer.DrawLowerEntities(screen, bgRoomID, entities, g.camera, g.viewOffset, g.worldScale)
 
 	sort.Slice(entities, func(i int, j int) bool { return entities[i].Position.Y < entities[j].Position.Y })
 	for _, entity := range entities {
+		if entity.RoomID != activeRoomID {
+			continue // background-room entities rendered only via DrawLowerEntities
+		}
 		g.drawEntity(screen, entity)
 	}
 	if g.debugPhysics {
 		g.drawPhysicsDebug(screen, activeRoomID, entities)
+		if activeRoom, ok := g.currentLayout.RoomByID(activeRoomID); ok {
+			g.renderer.DrawDebugOverlays(screen, activeRoom, g.camera, g.viewOffset, g.worldScale)
+		}
 	}
 	g.drawRaidHUD(screen, len(entities))
 	g.drawInteractionPrompt(screen, entities)
+	g.drawInputOverlay(screen)
+}
+
+func (g *Game) drawInputOverlay(screen *ebiten.Image) {
+	op := &ebiten.DrawImageOptions{}
+
+	for _, k := range g.inputOverlayKeys {
+		// 1. Рисуем фон кнопки (используя белый пиксель и масштабирование)
+		op.GeoM.Reset()
+		op.GeoM.Scale(k.rect.W, k.rect.H) // Растягиваем 1x1 до размеров кнопки
+		op.GeoM.Translate(k.rect.X, k.rect.Y)
+
+		// Выбираем цвет
+		if g.controls.Pressed(k.action) {
+			op.ColorScale.Reset()
+			op.ColorScale.ScaleWithColor(color.RGBA{80, 150, 255, 200}) // Нажата
+		} else {
+			op.ColorScale.Reset()
+			op.ColorScale.ScaleWithColor(color.RGBA{20, 20, 25, 150}) // Не нажата
+		}
+		screen.DrawImage(g.whitePixelImg, op)
+
+		// 2. Рисуем обводку (чуть сложнее без vector, но можно просто нарисовать
+		//    текст поверх. Если очень нужна обводка, лучше сделать её спрайтом.
+		//    Для скорости просто рисуем пред-отрисованный текст)
+		op.GeoM.Reset()
+		op.GeoM.Translate(k.rect.X, k.rect.Y)
+		op.ColorScale.Reset() // Текст всегда белый или серый
+		screen.DrawImage(k.img, op)
+	}
 }
 
 // revealBgRoomID returns the TargetRoomID of the first RevealZone that
@@ -850,7 +1037,7 @@ func (g *Game) drawPhysicsDebug(screen *ebiten.Image, activeRoomID string, entit
 	}
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Type: %s", roomType), 16, shared.ScreenHeight-40)
 
-	ebitenutil.DebugPrintAt(screen, "[F3] debug  cyan=solid  yellow=portal  white=reveal  rift=R/B/G  orange●=spawn", 16, shared.ScreenHeight-22)
+	ebitenutil.DebugPrintAt(screen, "[F3] debug  cyan=portal  white=reveal-zone  rift=R/B/G  orange●=spawn", 16, shared.ScreenHeight-22)
 }
 
 func (g *Game) drawLoot(screen *ebiten.Image) {
@@ -969,7 +1156,7 @@ func (g *Game) drawInteractionPrompt(screen *ebiten.Image, entities []shared.Ent
 	if prompt == "" {
 		for _, link := range room.JumpLinks {
 			if link.Area.ContainsPoint(localCenter) || link.Area.Intersects(localBounds) {
-				prompt = fmt.Sprintf("%s %s", BindingLabel(g.controls, ActionUseJumpLink), link.Label)
+				prompt = fmt.Sprintf("%s Portal: %s", BindingLabel(g.controls, ActionUseJumpLink), link.Label)
 				break
 			}
 		}
@@ -1219,6 +1406,7 @@ func (g *Game) applySnapshot(snapshot shared.SnapshotMessage) {
 		g.currentLayout = *snapshot.Layout
 		g.hasLayout = true
 		g.layoutSolids = g.buildLayoutSolids(g.currentLayout)
+		g.layoutPlatforms = g.buildLayoutPlatforms(g.currentLayout)
 	}
 
 	seen := make(map[string]bool, len(snapshot.Entities))
@@ -1275,7 +1463,7 @@ func (g *Game) reconcileLocal(authoritative shared.EntityState, ackSeq uint32) {
 	}
 	for _, command := range g.pendingInput {
 		if g.localPlayer.Travel == nil || !g.localPlayer.Travel.Active {
-			shared.SimulatePlayer(&g.localPlayer, command, g.solidsForPlayer())
+			shared.SimulatePlayer(&g.localPlayer, command, g.solidsForPlayer(), g.platformsForPlayer())
 		}
 	}
 	shared.RefreshAnimation(&g.localPlayer, now)
@@ -1362,6 +1550,15 @@ func (g *Game) buildLayoutSolids(layout shared.RaidLayoutState) map[string][]sha
 	return m
 }
 
+// buildLayoutPlatforms builds a per-room one-way platform map.
+func (g *Game) buildLayoutPlatforms(layout shared.RaidLayoutState) map[string][]shared.Rect {
+	m := make(map[string][]shared.Rect, len(layout.Rooms))
+	for _, room := range layout.Rooms {
+		m[room.ID] = room.Platforms
+	}
+	return m
+}
+
 // solidsForPlayer returns the collision slice for the room the local player
 // is currently in, or nil if not yet known (safe — SimulatePlayer handles nil).
 func (g *Game) solidsForPlayer() []shared.Rect {
@@ -1369,6 +1566,14 @@ func (g *Game) solidsForPlayer() []shared.Rect {
 		return nil
 	}
 	return g.layoutSolids[g.localPlayer.RoomID]
+}
+
+// platformsForPlayer returns the one-way platform slice for the current room.
+func (g *Game) platformsForPlayer() []shared.Rect {
+	if g.layoutPlatforms == nil {
+		return nil
+	}
+	return g.layoutPlatforms[g.localPlayer.RoomID]
 }
 
 func (g *Game) worldToScreen(position shared.Vec2) shared.Vec2 {

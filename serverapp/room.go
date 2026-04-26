@@ -42,18 +42,20 @@ type RaidRoom struct {
 	peers         map[string]*Peer
 	npcs          map[string]*serverNPC
 	loot          map[string]*lootPickup
-	roomSolids    map[string][]shared.Rect // roomID → its own solid rects
+	roomSolids     map[string][]shared.Rect // roomID → its own solid rects
+	roomPlatforms  map[string][]shared.Rect // roomID → one-way platform rects
 	exitRotation  []shared.ExitState
 	spawnRotation []shared.Vec2
 	exitCursor    int
 	spawnCursor   int
 	nextLootID    int
 
-	tick      uint64
-	createdAt time.Time
-	startedAt time.Time
-	phase     shared.RaidPhase
-	rand      *rand.Rand
+	tick          uint64
+	createdAt     time.Time
+	startedAt     time.Time
+	phase         shared.RaidPhase
+	rand          *rand.Rand
+	lastRiftSpawn float64 // serverTime() when a rift was last spawned
 }
 
 type joinRequest struct {
@@ -515,6 +517,104 @@ func (r *RaidRoom) simulateTick() {
 	if r.shouldFinishRaid() {
 		r.phase = shared.RaidPhaseFinished
 	}
+
+	// Spawn a new rift every 60 seconds, up to 20 active rifts per room.
+	const riftInterval = 60.0
+	const maxActiveRifts = 20
+	if now-r.lastRiftSpawn >= riftInterval {
+		r.trySpawnRift(now)
+		r.lastRiftSpawn = now
+	}
+}
+
+// trySpawnRift picks a random rift zone for a random room and materialises a
+// new rift there, checking:
+//   - the room already has fewer than maxActiveRifts open rifts
+//   - the chosen zone does not overlap an existing rift (min 1 block = 16 px gap)
+func (r *RaidRoom) trySpawnRift(now float64) {
+	const maxActiveRifts = 20
+	const block = 16.0
+	const riftW, riftH = 32.0, 48.0
+
+	if r.raid == nil {
+		return
+	}
+	rooms := r.raid.Layout.Rooms
+	if len(rooms) == 0 {
+		return
+	}
+
+	// Pick a random room that has rift zones and isn't already at the cap.
+	candidates := make([]int, 0, len(rooms))
+	for i, room := range rooms {
+		if len(room.RiftZones) == 0 {
+			continue
+		}
+		active := 0
+		for _, rf := range room.Rifts {
+			if rf.IsOpen() {
+				active++
+			}
+		}
+		if active < maxActiveRifts {
+			candidates = append(candidates, i)
+		}
+	}
+	if len(candidates) == 0 {
+		return
+	}
+	ri := candidates[r.rand.Intn(len(candidates))]
+	room := &r.raid.Layout.Rooms[ri]
+
+	// Pick a random rift zone in that room.
+	zone := room.RiftZones[r.rand.Intn(len(room.RiftZones))]
+
+	// Place the rift centred in the zone.
+	cx := zone.X + zone.W*0.5
+	px := cx - riftW/2
+	py := zone.Y - riftH
+
+	newArea := shared.Rect{X: px, Y: py, W: riftW, H: riftH}
+
+	// Check overlap: no existing open rift within 1 block gap.
+	for _, existing := range room.Rifts {
+		if !existing.IsOpen() {
+			continue
+		}
+		// Expand existing area by 1 block on each side for the gap check.
+		expanded := shared.Rect{
+			X: existing.Area.X - block,
+			Y: existing.Area.Y - block,
+			W: existing.Area.W + block*2,
+			H: existing.Area.H + block*2,
+		}
+		if newArea.X < expanded.X+expanded.W &&
+			newArea.X+newArea.W > expanded.X &&
+			newArea.Y < expanded.Y+expanded.H &&
+			newArea.Y+newArea.H > expanded.Y {
+			return // too close to an existing rift
+		}
+	}
+
+	// Pick a random target room.
+	n := len(rooms)
+	targetIdx := r.rand.Intn(n - 1)
+	if targetIdx >= ri {
+		targetIdx++
+	}
+	targetRoom := rooms[targetIdx].ID
+
+	riftID := fmt.Sprintf("%s-rift-dyn-%d", room.ID, r.tick)
+	room.Rifts = append(room.Rifts, shared.RiftState{
+		ID:           riftID,
+		RoomID:       room.ID,
+		TargetRoomID: targetRoom,
+		Area:         newArea,
+		Arrival:      shared.Vec2{X: cx, Y: py - 50},
+		Kind:         shared.RiftKindGreen,
+		Capacity:     shared.RiftCapacity(shared.RiftKindGreen),
+		UsedCount:    0,
+	})
 }
 
 func (r *RaidRoom) simulatePlayer(player *serverPlayer, input shared.InputCommand, now float64) {
@@ -522,7 +622,7 @@ func (r *RaidRoom) simulatePlayer(player *serverPlayer, input shared.InputComman
 		return
 	}
 	if player.state.Travel == nil || !player.state.Travel.Active {
-		shared.SimulatePlayer(&player.state, input, r.solidsForRoom(player.state.RoomID))
+		shared.SimulatePlayer(&player.state, input, r.solidsForRoom(player.state.RoomID), r.platformsForRoom(player.state.RoomID))
 		// Do NOT call roomIDForPosition here: procgen rooms all share the same
 		// origin so position-based room detection doesn't work.  Room changes
 		// happen exclusively via explicit JumpLink/portal use (tryUseJumpLink).
@@ -1097,11 +1197,13 @@ func (r *RaidRoom) cacheSolids() {
 	r.exitRotation = nil
 	r.spawnRotation = nil
 	r.roomSolids = make(map[string][]shared.Rect, len(r.raid.Layout.Rooms))
+	r.roomPlatforms = make(map[string][]shared.Rect, len(r.raid.Layout.Rooms))
 	for _, room := range r.raid.Layout.Rooms {
 		// Keep solids per-room so physics only runs against the room the entity
 		// is currently in.  Merging all rooms' solids into one list causes
 		// invisible-wall collisions when rooms share the same origin (0,0).
 		r.roomSolids[room.ID] = room.Solids
+		r.roomPlatforms[room.ID] = room.Platforms
 		r.exitRotation = append(r.exitRotation, room.Exits...)
 	}
 	sort.Slice(r.exitRotation, func(i int, j int) bool { return r.exitRotation[i].ID < r.exitRotation[j].ID })
@@ -1139,6 +1241,19 @@ func (r *RaidRoom) solidsForRoom(roomID string) []shared.Rect {
 	if len(r.raid.Layout.Rooms) > 0 {
 		if solids, ok := r.roomSolids[r.raid.Layout.Rooms[0].ID]; ok {
 			return solids
+		}
+	}
+	return nil
+}
+
+// platformsForRoom returns the one-way platform rects for a specific room.
+func (r *RaidRoom) platformsForRoom(roomID string) []shared.Rect {
+	if platforms, ok := r.roomPlatforms[roomID]; ok {
+		return platforms
+	}
+	if len(r.raid.Layout.Rooms) > 0 {
+		if platforms, ok := r.roomPlatforms[r.raid.Layout.Rooms[0].ID]; ok {
+			return platforms
 		}
 	}
 	return nil

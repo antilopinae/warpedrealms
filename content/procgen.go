@@ -13,6 +13,7 @@ package content
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"time"
@@ -86,6 +87,10 @@ type ProcGenConfig struct {
 	Rifts RiftConfig
 
 	NodesDir string // path to node JSON files (default "gamedata/nodes")
+
+	// Zone controls zone-specific parameters (max boss level, etc.).
+	// If empty it defaults to the generator's per-room zone assignment.
+	Zone shared.RingZone
 }
 
 // DefaultPlayerPhysics matches the declared design size (1.5×4 blocks) and
@@ -109,9 +114,9 @@ var DefaultProcGenConfig = ProcGenConfig{
 	Density:    0.5,
 	Player:     DefaultPlayerPhysics,
 	Rifts: RiftConfig{
-		RedPerRoom:   1,
-		BluePerRoom:  2,
-		GreenPerRoom: 3,
+		RedPerRoom:   8,
+		BluePerRoom:  5,
+		GreenPerRoom: 4,
 	},
 	NodesDir: "gamedata/nodes",
 }
@@ -190,12 +195,17 @@ type pgPortal struct {
 }
 
 type pgLocation struct {
-	biome     string
-	portals   []pgPortal
-	spawn     shared.Vec2 // pixel coords of player spawn
-	spawns    []shared.Vec2
-	backwalls []shared.Rect
-	level     world.LDtkWriteLevel
+	biome       string
+	portals     []pgPortal
+	portalZones []shared.Rect // pixel-space rects of each portal (for map rendering)
+	spawn       shared.Vec2   // pixel coords of player spawn
+	spawns      []shared.Vec2
+	backwalls   []shared.Rect
+	platforms   []shared.Rect // one-way platform rects (pixel coords)
+	bossSpawns  []shared.BossSpawn
+	riftZones   []shared.Rect // all candidate zones (sky + underground) where rifts may spawn
+	splitY      int           // block row separating sky (y<splitY) from underground (y>=splitY)
+	level       world.LDtkWriteLevel
 }
 
 type pgEdge struct {
@@ -268,12 +278,20 @@ func (b *Bundle) GenerateRaidProcGenWith(seed int64, cfg ProcGenConfig) (*Genera
 		raid.Layout.PlayerSpawns = raid.PlayerSpawns
 	}
 
-	// Backwalls are generated directly by sandwich_gen and carried in runtime
-	// room state. They are data-only in this stage (no physics/render usage).
+	// Backwalls, platforms, and boss spawns are generated directly by sandwich_gen
+	// and carried in runtime room state.
 	backwallsByRoomID := make(map[string][]shared.Rect, len(graph.locs))
+	platformsByRoomID := make(map[string][]shared.Rect, len(graph.locs))
+	bossSpawnsByRoomID := make(map[string][]shared.BossSpawn, len(graph.locs))
+	riftZonesByRoomID := make(map[string][]shared.Rect, len(graph.locs))
+	portalZonesByRoomID := make(map[string][]shared.Rect, len(graph.locs))
 	for i, loc := range graph.locs {
 		roomID := fmt.Sprintf("room-%02d", i+1)
 		backwallsByRoomID[roomID] = append([]shared.Rect(nil), loc.backwalls...)
+		platformsByRoomID[roomID] = append([]shared.Rect(nil), loc.platforms...)
+		bossSpawnsByRoomID[roomID] = append([]shared.BossSpawn(nil), loc.bossSpawns...)
+		riftZonesByRoomID[roomID] = append([]shared.Rect(nil), loc.riftZones...)
+		portalZonesByRoomID[roomID] = append([]shared.Rect(nil), loc.portalZones...)
 	}
 
 	// Annotate rooms with biome and wire the background-room chain.
@@ -284,6 +302,18 @@ func (b *Bundle) GenerateRaidProcGenWith(seed int64, cfg ProcGenConfig) (*Genera
 		if i < n {
 			if backwalls, ok := backwallsByRoomID[raid.Layout.Rooms[i].ID]; ok {
 				raid.Layout.Rooms[i].Backwalls = append([]shared.Rect(nil), backwalls...)
+			}
+			if platforms, ok := platformsByRoomID[raid.Layout.Rooms[i].ID]; ok {
+				raid.Layout.Rooms[i].Platforms = append([]shared.Rect(nil), platforms...)
+			}
+			if bs, ok := bossSpawnsByRoomID[raid.Layout.Rooms[i].ID]; ok {
+				raid.Layout.Rooms[i].BossSpawns = append([]shared.BossSpawn(nil), bs...)
+			}
+			if rz, ok := riftZonesByRoomID[raid.Layout.Rooms[i].ID]; ok {
+				raid.Layout.Rooms[i].RiftZones = append([]shared.Rect(nil), rz...)
+			}
+			if pz, ok := portalZonesByRoomID[raid.Layout.Rooms[i].ID]; ok {
+				raid.Layout.Rooms[i].PortalZones = append([]shared.Rect(nil), pz...)
 			}
 			bio := graph.biomes[i]
 			raid.Layout.Rooms[i].Biome = bio
@@ -320,23 +350,48 @@ func pgBuildGraph(rng *rand.Rand, cfg ProcGenConfig) *pgGraph {
 	for i := 0; i < n; i++ {
 		locRNG := rand.New(rand.NewSource(rng.Int63()))
 		id := fmt.Sprintf("room_%02d", i+1)
-		sandwich := GenerateSandwichLocation(locRNG, id, cfg)
+		locCfg := cfg
+		locCfg.Zone = g.zones[i] // pass zone so generator can scale boss difficulty
+		sandwich := GenerateSandwichLocation(locRNG, id, locCfg)
 		lvl := sandwich.Level
-		nPorts := cfg.MinPortals + rng.Intn(cfg.MaxPortals-cfg.MinPortals+1)
-		portals := pgPlacePortals(locRNG, lvl, nPorts, cfg)
+
+		// Scale portal and rift counts with location area relative to the base
+		// 400×300 grid so larger rooms feel proportionally populated.
+		baseArea := float64(400 * 300)
+		locArea := float64(locCfg.GridW * locCfg.GridH)
+		areaScale := locArea / baseArea
+		if areaScale < 1 {
+			areaScale = 1
+		}
+
+		nPorts := int(math.Round(float64(cfg.MinPortals+rng.Intn(cfg.MaxPortals-cfg.MinPortals+1)) * areaScale))
+		portals := pgPlacePortalsOnGround(locRNG, sandwich, nPorts)
+
+		// Collect all portal areas for map rendering.
+		pzones := make([]shared.Rect, len(portals))
+		for pi, p := range portals {
+			pzones[pi] = p.area
+		}
+
 		spawn := sandwich.PrimarySpawn
 		if spawn == (shared.Vec2{}) {
 			spawn = pgPickSpawnFromLevel(lvl, cfg)
 		}
 		spawns := append([]shared.Vec2(nil), sandwich.SpawnPoints...)
 		backwalls := pgGridRectsToPixels(sandwich.BackwallRects, lvl.GridSize)
+		platforms := pgGridRectsToPixels(sandwich.PlatformRects, lvl.GridSize)
 		g.locs[i] = &pgLocation{
-			biome:     g.biomes[i],
-			portals:   portals,
-			spawn:     spawn,
-			spawns:    spawns,
-			backwalls: backwalls,
-			level:     lvl,
+			biome:       g.biomes[i],
+			portals:     portals,
+			portalZones: pzones,
+			spawn:       spawn,
+			spawns:      spawns,
+			backwalls:   backwalls,
+			platforms:   platforms,
+			bossSpawns:  append([]shared.BossSpawn(nil), sandwich.BossSpawns...),
+			riftZones:   append([]shared.Rect(nil), sandwich.RiftZones...),
+			splitY:      sandwich.SplitY,
+			level:       lvl,
 		}
 	}
 
@@ -501,6 +556,14 @@ func pgWriteSession(g *pgGraph, path string) error {
 		levels[i] = loc.level
 	}
 
+	// Track which portals have been assigned a RevealZone via a JumpLink edge,
+	// so we can add fallback RevealZones for any remaining unconnected portals.
+	// revealCovered[locIdx][portalIdx] = true once covered.
+	revealCovered := make([]map[int]bool, len(g.locs))
+	for i := range revealCovered {
+		revealCovered[i] = make(map[int]bool)
+	}
+
 	// Wire portal pairs from graph edges.
 	for _, edge := range g.edges {
 		aRoomID := fmt.Sprintf("room_%02d", edge.a+1)
@@ -524,6 +587,7 @@ func pgWriteSession(g *pgGraph, path string) error {
 		})
 		// RevealZone A (shows room B behind the portal)
 		levels[edge.a].Entities = append(levels[edge.a].Entities, pgMakeRevealZone(ap.area, bRoomID))
+		revealCovered[edge.a][edge.portA] = true
 
 		// JumpLink B → A
 		levels[edge.b].Entities = append(levels[edge.b].Entities, world.LDtkWriteEntity{
@@ -541,37 +605,170 @@ func pgWriteSession(g *pgGraph, path string) error {
 		})
 		// RevealZone B (shows room A behind the portal)
 		levels[edge.b].Entities = append(levels[edge.b].Entities, pgMakeRevealZone(bp.area, aRoomID))
+		revealCovered[edge.b][edge.portB] = true
 	}
 
-	// Scatter rifts across all rooms.
+	// Give every portal that didn't get a graph-edge JumpLink its own JumpLink +
+	// RevealZone, so all portals are interactive and look identical.
+	// Target: pick the room already connected to this room via the first edge,
+	// or fall back to any other room.
+	for i, loc := range g.locs {
+		// Collect rooms that are already linked to room i via graph edges.
+		linkedTargets := make([]int, 0, 4)
+		for _, e := range g.edges {
+			if e.a == i {
+				linkedTargets = append(linkedTargets, e.b)
+			} else if e.b == i {
+				linkedTargets = append(linkedTargets, e.a)
+			}
+		}
+		// Fallback: first room that isn't i.
+		fallbackIdx := -1
+		for j := range g.locs {
+			if j != i {
+				fallbackIdx = j
+				break
+			}
+		}
+
+		for pi, p := range loc.portals {
+			if revealCovered[i][pi] {
+				continue // already covered by a graph-edge JumpLink
+			}
+			// Pick a target: rotate through linkedTargets so consecutive unconnected
+			// portals fan out to different rooms, then fall back.
+			targetIdx := fallbackIdx
+			if len(linkedTargets) > 0 {
+				targetIdx = linkedTargets[pi%len(linkedTargets)]
+			}
+			if targetIdx < 0 {
+				continue
+			}
+			targetRoomID := fmt.Sprintf("room_%02d", targetIdx+1)
+			arrivalX := g.locs[targetIdx].spawn.X
+			arrivalY := g.locs[targetIdx].spawn.Y
+
+			// JumpLink — makes the portal interactive (player can enter it).
+			levels[i].Entities = append(levels[i].Entities, world.LDtkWriteEntity{
+				Identifier: "JumpLink",
+				PX:         int(p.area.X),
+				PY:         int(p.area.Y),
+				W:          int(p.area.W),
+				H:          int(p.area.H),
+				Fields: []world.LDtkWriteField{
+					{Key: "target", Value: targetRoomID},
+					{Key: "label", Value: p.label},
+					{Key: "arrival_x", Value: arrivalX},
+					{Key: "arrival_y", Value: arrivalY},
+				},
+			})
+			// RevealZone — shows the target room in the background as player approaches.
+			levels[i].Entities = append(levels[i].Entities, pgMakeRevealZone(p.area, targetRoomID))
+		}
+	}
+
+	// Scatter rifts across all rooms using the pre-computed rift zones.
+	// Distribution: 60% underground, 35% sky platforms, 5% ground level.
 	cfg := g.cfg
 	n := len(g.locs)
-	for i, loc := range g.locs {
-		lvl := loc.level
-		// Each rift goes to a randomly chosen other room.
-		riftRNG := rand.New(rand.NewSource(int64(i*7919 + 42)))
 
-		pgScatterRifts(&levels[i], lvl, cfg.Rifts.RedPerRoom, "red", n, i, riftRNG)
-		pgScatterRifts(&levels[i], lvl, cfg.Rifts.BluePerRoom, "blue", n, i, riftRNG)
-		pgScatterRifts(&levels[i], lvl, cfg.Rifts.GreenPerRoom, "green", n, i, riftRNG)
+	baseArea := float64(400 * 300)
+	for i, loc := range g.locs {
+		riftRNG := rand.New(rand.NewSource(int64(i*7919 + 42)))
+		locArea := float64(loc.level.GridW * loc.level.GridH)
+		areaScale := locArea / baseArea
+		if areaScale < 1 {
+			areaScale = 1
+		}
+		red := int(math.Round(float64(cfg.Rifts.RedPerRoom) * areaScale))
+		blue := int(math.Round(float64(cfg.Rifts.BluePerRoom) * areaScale))
+		green := int(math.Round(float64(cfg.Rifts.GreenPerRoom) * areaScale))
+
+		// Split zones into sky (y < splitY) and underground (y >= splitY).
+		splitYPx := float64(loc.splitY * 16)
+		var skyZones, undergroundZones []shared.Rect
+		for _, z := range loc.riftZones {
+			if z.Y+z.H <= splitYPx {
+				skyZones = append(skyZones, z)
+			} else {
+				undergroundZones = append(undergroundZones, z)
+			}
+		}
+		// Ground zones: portal positions (at the sky/underground boundary).
+		groundZones := loc.portalZones
+
+		pgScatterRiftsFromZones(&levels[i], skyZones, undergroundZones, groundZones, red, "red", n, i, riftRNG)
+		pgScatterRiftsFromZones(&levels[i], skyZones, undergroundZones, groundZones, blue, "blue", n, i, riftRNG)
+		pgScatterRiftsFromZones(&levels[i], skyZones, undergroundZones, groundZones, green, "green", n, i, riftRNG)
+
+		// Emit rift zones as LDtk zone overlay entities.
+		for _, rz := range loc.riftZones {
+			levels[i].Entities = append(levels[i].Entities, world.LDtkWriteEntity{
+				Identifier: "RiftZone",
+				PX:         int(rz.X),
+				PY:         int(rz.Y),
+				W:          int(rz.W),
+				H:          int(rz.H),
+			})
+		}
+
+		// Emit portal zones as LDtk zone overlay entities.
+		for _, pz := range loc.portalZones {
+			levels[i].Entities = append(levels[i].Entities, world.LDtkWriteEntity{
+				Identifier: "PortalZone",
+				PX:         int(pz.X),
+				PY:         int(pz.Y),
+				W:          int(pz.W),
+				H:          int(pz.H),
+			})
+		}
 	}
 
 	return world.WriteLDtkFile(path, levels)
 }
 
-// pgMakeRevealZone creates a RevealZone entity placed just above/around a portal area.
-// The reveal zone is wider than the portal itself so the player sees the target
-// room's background while approaching.
+// pgMakeRevealZone creates a RevealZone entity centred on the portal, body
+// extending upward from the portal's mid-point ("по середине и чуть выше").
+//
+// LDtk entity pivot is (0.5, 1):
+//
+//	PX  = horizontal centre of the entity  (pivot X = 0.5)
+//	PY  = bottom edge of the entity        (pivot Y = 1.0)
+//
+// Portal geometry:
+//
+//	top    = portalArea.Y
+//	bottom = portalArea.Y + portalArea.H
+//	centerX = portalArea.X + portalArea.W/2
+//	centerY = portalArea.Y + portalArea.H/2
+//
+// Desired zone:
+//   - horizontally centred on the portal     → PX = centerX
+//   - bottom of zone at portal's centre Y    → PY = centerY
+//   - zone extends upward from portal centre → top = centerY - H
+//   - same width and height as the portal
+//
+// Result: zone sits in the upper half of the portal + slightly above it.
+// pgMakeRevealZone creates a RevealZone entity for a portal.
+//
+// The zone is large (2× portal width, 2.5× portal height), horizontally centred
+// on the portal, with its TOP starting slightly above the portal's top edge.
+// This lets the reveal effect trigger as the player approaches from any direction.
+//
+// LDtk px stores top-left pixel position (our loader treats it that way).
 func pgMakeRevealZone(portalArea shared.Rect, targetRoomID string) world.LDtkWriteEntity {
-	const revealPad = 80.0
-	rx := portalArea.X - revealPad
-	ry := portalArea.Y - revealPad
-	rw := portalArea.W + revealPad*2
-	rh := portalArea.H + revealPad*2
+	rw := portalArea.W * 2.0                       // 2× portal width
+	rh := portalArea.H * 2.5                       // 2.5× portal height
+	px := portalArea.X + portalArea.W*0.5 - rw*0.5 // centred on portal
+	// Zone bottom = ground level (portal bottom), zone extends upward into sky.
+	// portalArea.Y + portalArea.H = splitY * block (ground surface).
+	groundY := portalArea.Y + portalArea.H
+	py := groundY - rh // top of zone
+
 	return world.LDtkWriteEntity{
 		Identifier: "RevealZone",
-		PX:         int(rx),
-		PY:         int(ry),
+		PX:         int(px),
+		PY:         int(py),
 		W:          int(rw),
 		H:          int(rh),
 		Fields: []world.LDtkWriteField{
@@ -580,34 +777,46 @@ func pgMakeRevealZone(portalArea shared.Rect, targetRoomID string) world.LDtkWri
 	}
 }
 
-// pgScatterRifts places count rifts of the given kind inside lvl, targeting
-// rooms other than selfIdx.
-func pgScatterRifts(wl *world.LDtkWriteLevel, lvl world.LDtkWriteLevel, count int, kind string, numRooms, selfIdx int, rng *rand.Rand) {
+// pgScatterRiftsFromZones places count rifts of the given kind.
+// Distribution: 60% underground, 35% sky platforms, 5% ground level.
+// Rifts sit ON the floor/platform surface (bottom of rift rect = zone bottom).
+func pgScatterRiftsFromZones(wl *world.LDtkWriteLevel, skyZones, undergroundZones, groundZones []shared.Rect, count int, kind string, numRooms, selfIdx int, rng *rand.Rand) {
 	const block = 16
 	const riftW, riftH = 32, 48
 
-	for i := 0; i < count; i++ {
-		// Pick a random target room that is not this room.
-		targetIdx := rng.Intn(numRooms - 1)
+	// Compute per-category counts: 60% underground, 35% sky, 5% ground.
+	nUnder := int(math.Round(float64(count) * 0.60))
+	nSky := int(math.Round(float64(count) * 0.35))
+	nGround := count - nUnder - nSky
+	if nGround < 0 {
+		nGround = 0
+	}
+
+	type entry struct {
+		zones []shared.Rect
+		n     int
+	}
+	plan := []entry{
+		{undergroundZones, nUnder},
+		{skyZones, nSky},
+		{groundZones, nGround},
+	}
+
+	placeRift := func(z shared.Rect) {
+		targetIdx := rng.Intn(max(1, numRooms-1))
 		if targetIdx >= selfIdx {
 			targetIdx++
 		}
 		targetRoom := fmt.Sprintf("room_%02d", targetIdx+1)
 
-		// Pick a random column in the middle two-thirds of the level.
-		lo := lvl.GridW / 6
-		hi := lvl.GridW * 5 / 6
-		if hi <= lo {
-			hi = lvl.GridW - 2
+		// Rift sits on the zone floor: bottom of rift = bottom of zone (z.Y + z.H).
+		// px: random horizontal position within zone, clamped so rift stays inside.
+		maxPX := z.X + z.W - float64(riftW)
+		if maxPX < z.X {
+			maxPX = z.X
 		}
-		col := lo + rng.Intn(hi-lo)
-		surfaceY := pgFindSurface(lvl.SolidCells, col, lvl.GridW, lvl.GridH)
-		px := float64(col*block) - riftW/2
-		py := float64(surfaceY*block) - riftH
-
-		// Arrival in target room — just pick center.
-		arrX := float64(lvl.GridW*block) * 0.5
-		arrY := float64(surfaceY*block) - 100
+		px := z.X + rng.Float64()*math.Max(1, maxPX-z.X)
+		py := z.Y + z.H - float64(riftH) // rift top; bottom aligns with zone floor
 
 		wl.Entities = append(wl.Entities, world.LDtkWriteEntity{
 			Identifier: "Rift",
@@ -616,38 +825,215 @@ func pgScatterRifts(wl *world.LDtkWriteLevel, lvl world.LDtkWriteLevel, count in
 			W:          riftW,
 			H:          riftH,
 			Fields: []world.LDtkWriteField{
-				{Key: "target", Value: targetRoom},
+				{Key: "target", Value: fmt.Sprintf("room_%02d", targetIdx+1)},
 				{Key: "kind", Value: kind},
-				{Key: "arrival_x", Value: arrX},
-				{Key: "arrival_y", Value: arrY},
+				{Key: "arrival_x", Value: float64(wl.GridW*block) * 0.5},
+				{Key: "arrival_y", Value: py - 50},
 			},
 		})
+		_ = targetRoom // used above via Sprintf
+	}
+
+	for _, e := range plan {
+		placed := 0
+		// Try to draw from the designated zone list; fall back to any zone or surface.
+		for placed < e.n {
+			if len(e.zones) > 0 {
+				placeRift(e.zones[rng.Intn(len(e.zones))])
+			} else if len(undergroundZones) > 0 {
+				placeRift(undergroundZones[rng.Intn(len(undergroundZones))])
+			} else if len(skyZones) > 0 {
+				placeRift(skyZones[rng.Intn(len(skyZones))])
+			} else {
+				// Last resort: surface column.
+				col := wl.GridW/6 + rng.Intn(max(1, wl.GridW*2/3))
+				surfY := pgFindSurface(wl.SolidCells, col, wl.GridW, wl.GridH)
+				z := shared.Rect{
+					X: float64(col * block),
+					Y: float64((surfY - 2) * block),
+					W: float64(block * 2),
+					H: float64(block * 2),
+				}
+				placeRift(z)
+			}
+			placed++
+		}
 	}
 }
 
 // ─── Portal placement ─────────────────────────────────────────────────────────
 
-func pgPlacePortals(rng *rand.Rand, lvl world.LDtkWriteLevel, count int, cfg ProcGenConfig) []pgPortal {
+// pgPlacePortalsOnGround places portals firmly on the solid ground surface at the
+// sky/underground boundary (splitY). Portals require:
+//   - Solid ground beneath the full portal width AND a clearance margin on each side.
+//   - Clear sky (no solid: no hub platform, no stairchain) in a square zone above.
+//
+// Portals are placed preferentially just outside inlet shaft openings (where there
+// is naturally lots of open flat ground) and fall back to any other valid position.
+func pgPlacePortalsOnGround(rng *rand.Rand, sandwich SandwichLocation, count int) []pgPortal {
 	const block = 16
-	stepX := (lvl.GridW * block) / (count + 1)
-	portals := make([]pgPortal, 0, count)
+	const portalW, portalH = 56, 72
+	const portalWB = 4 // portal width in blocks: ceil(56/16) = 4
+	const clearB = 5   // minimum clear blocks on each side (= 80 px buffer)
 
-	for i := 0; i < count; i++ {
-		cx := float64(stepX*(i+1)) + float64(rng.Intn(stepX/3)-(stepX/6))
-		surfaceY := pgFindSurface(lvl.SolidCells, int(cx)/block, lvl.GridW, lvl.GridH)
-		py := float64(surfaceY*block) - 72
-		if py < 0 {
-			py = 8
+	if count <= 0 {
+		return nil
+	}
+
+	splitY := sandwich.SplitY
+	lvl := sandwich.Level
+	gridW := lvl.GridW
+	inlets := sandwich.Inlets
+
+	// Build lookup: which columns at splitY have solid ground, and which sky cells
+	// are blocked (by hub platforms, stairchains, etc.).
+	solidAtSplit := make([]bool, gridW)
+	type xy struct{ x, y int }
+	skyBlocked := make(map[xy]bool, len(lvl.SolidCells)/2)
+	for _, c := range lvl.SolidCells {
+		x, y := c[0], c[1]
+		if x < 0 || x >= gridW {
+			continue
 		}
+		if y == splitY {
+			solidAtSplit[x] = true
+		} else if y >= 0 && y < splitY {
+			skyBlocked[xy{x, y}] = true
+		}
+	}
+
+	// skyH: rows above splitY that must be free of solid (portal body height + headroom).
+	skyH := portalH/block + 2 // ≈ 6 rows
+
+	// isValidLeft(col): can we place a portal whose left edge starts at col?
+	isValidLeft := func(col int) bool {
+		lo := col - clearB
+		hi := col + portalWB + clearB
+		if lo < 0 || hi > gridW {
+			return false
+		}
+		// All ground columns in [lo, hi) must be solid at splitY.
+		for x := lo; x < hi; x++ {
+			if !solidAtSplit[x] {
+				return false
+			}
+		}
+		// All sky cells in [lo, hi) × [splitY-skyH, splitY) must be air.
+		for y := max(0, splitY-skyH); y < splitY; y++ {
+			for x := lo; x < hi; x++ {
+				if skyBlocked[xy{x, y}] {
+					return false
+				}
+			}
+		}
+		return true
+	}
+
+	// Collect all valid left-edge columns.
+	valid := make([]bool, gridW)
+	for col := 0; col < gridW; col++ {
+		valid[col] = isValidLeft(col)
+	}
+
+	portals := make([]pgPortal, 0, count)
+	// usedRange marks columns that are "taken" (portal + clearance + spacing).
+	usedRange := make([]bool, gridW)
+
+	emit := func(col int) bool {
+		if !valid[col] {
+			return false
+		}
+		lo := col - clearB
+		hi := col + portalWB + clearB
+		for x := max(0, lo); x < min(gridW, hi); x++ {
+			if usedRange[x] {
+				return false
+			}
+		}
+		cx := float64((col + portalWB/2) * block)
+		py := float64(splitY*block) - float64(portalH)
 		portals = append(portals, pgPortal{
-			area: shared.Rect{X: cx - 28, Y: py, W: 56, H: 56},
-			arrival: shared.Vec2{
-				X: cx,
-				Y: float64(surfaceY*block) - 120,
-			},
-			label: pgPortalLabel(i),
+			area:    shared.Rect{X: cx - float64(portalW)/2, Y: py, W: float64(portalW), H: float64(portalH)},
+			arrival: shared.Vec2{X: cx, Y: py - 50},
+			label:   pgPortalLabel(len(portals)),
+		})
+		// Widen exclusion zone so portals are nicely spaced apart.
+		spacing := portalWB + clearB
+		for x := max(0, col-spacing); x < min(gridW, col+portalWB+spacing); x++ {
+			usedRange[x] = true
+		}
+		return true
+	}
+
+	// Pass 1: try positions just outside each inlet shaft opening.
+	if len(inlets) > 0 {
+		order := rng.Perm(len(inlets))
+		for _, i := range order {
+			if len(portals) >= count {
+				break
+			}
+			inlet := inlets[i]
+			half := inlet.Width/2 + 1
+			// Candidates: ground just to the left and right of the shaft hole.
+			leftEdge := inlet.CenterX - half - portalWB - clearB
+			rightEdge := inlet.CenterX + half + clearB
+			sides := []int{leftEdge, rightEdge}
+			rng.Shuffle(len(sides), func(a, b int) { sides[a], sides[b] = sides[b], sides[a] })
+			for _, col := range sides {
+				if emit(col) {
+					break
+				}
+				// Search outward a bit if the exact edge is blocked.
+				for d := 1; d <= clearB*2; d++ {
+					if emit(col-d) || emit(col+d) {
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Pass 2: fill any remaining slots from valid columns in random order.
+	if len(portals) < count {
+		perm := rng.Perm(gridW)
+		for _, col := range perm {
+			if len(portals) >= count {
+				break
+			}
+			emit(col)
+		}
+	}
+
+	// Если после всех проверок не найдено ни одного места для портала (слишком плотная застройка),
+	// принудительно ставим один портал в центре, игнорируя проверки на свободное небо.
+	if len(portals) == 0 {
+		// Ищем любую колонку, где на уровне splitY есть твердая земля
+		fallbackCol := gridW / 2
+		foundGround := false
+		for d := 0; d < gridW/2; d++ {
+			for _, side := range []int{1, -1} {
+				checkCol := gridW/2 + d*side
+				if checkCol >= 0 && checkCol < gridW && solidAtSplit[checkCol] {
+					fallbackCol = checkCol
+					foundGround = true
+					break
+				}
+			}
+			if foundGround {
+				break
+			}
+		}
+
+		// Создаем портал в найденной колонке (или просто в центре, если земли вообще нет)
+		cx := float64((fallbackCol + portalWB/2) * block)
+		py := float64(splitY*block) - float64(portalH)
+		portals = append(portals, pgPortal{
+			area:    shared.Rect{X: cx - float64(portalW)/2, Y: py, W: float64(portalW), H: float64(portalH)},
+			arrival: shared.Vec2{X: cx, Y: py - 50},
+			label:   "emergency exit",
 		})
 	}
+
 	return portals
 }
 
@@ -690,67 +1076,10 @@ func pgPickSpawnFromLevel(lvl world.LDtkWriteLevel, cfg ProcGenConfig) shared.Ve
 	}
 }
 
-// pgGenerateSpawnPoints scans the first location's solid cells and returns
-// N evenly-spaced spawn points along the top surface of the left portion of
-// the level.  N = cfg.NumRooms (one slot per expected player; more than enough
-// for typical session sizes).
-//
-// Each point is placed above the topmost solid cell in a column, at a height
-// that clears the player collider (cfg.Player.ColliderH pixels).
-func pgGenerateSpawnPoints(lvl world.LDtkWriteLevel, cfg ProcGenConfig) []shared.Vec2 {
-	const block = 16
-
-	// Scan the left third of the level for solid surface columns.
-	scanEnd := lvl.GridW / 3
-	if scanEnd < 20 {
-		scanEnd = lvl.GridW
-	}
-
-	n := cfg.NumRooms // one spawn per player slot
-	if n < 2 {
-		n = 2
-	}
-
-	// stride between spawn columns
-	stride := scanEnd / (n + 1)
-	if stride < 4 {
-		stride = 4
-	}
-
-	spawns := make([]shared.Vec2, 0, n)
-	for i := 0; i < n; i++ {
-		colX := stride * (i + 1)
-		surfaceY := pgFindSurface(lvl.SolidCells, colX, lvl.GridW, lvl.GridH)
-		// Place player feet at surfaceY, then lift by collider height + small margin.
-		clearancePx := cfg.Player.ColliderH + 8
-		py := float64(surfaceY*block) - clearancePx
-		if py < 0 {
-			py = 8
-		}
-		spawns = append(spawns, shared.Vec2{
-			X: float64(colX * block),
-			Y: py,
-		})
-	}
-	return spawns
-}
-
 func pgPortalLabel(index int) string {
 	labels := []string{"portal", "shortcut", "secret passage", "exit", "gateway"}
 	if index < len(labels) {
 		return labels[index]
 	}
 	return "portal"
-}
-
-// ─── Utility ──────────────────────────────────────────────────────────────────
-
-func pgClamp(v, lo, hi int) int {
-	if v < lo {
-		return lo
-	}
-	if v > hi {
-		return hi
-	}
-	return v
 }

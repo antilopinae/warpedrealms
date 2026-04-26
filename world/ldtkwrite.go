@@ -255,7 +255,8 @@ type LDtkWriteLevel struct {
 	GridW      int        // width  in blocks
 	GridH      int        // height in blocks
 	GridSize   int        // pixels per block (default 16)
-	SolidCells [][2]int   // [col, row] pairs that should be solid
+	SolidCells    [][2]int // [col, row] pairs that should be solid (value 1)
+	PlatformCells [][2]int // [col, row] pairs that are one-way platforms (value 3)
 	Entities   []LDtkWriteEntity
 }
 
@@ -280,17 +281,25 @@ const (
 	uidLayerCollision = 2
 	uidLayerEntities  = 3
 
-	uidEntityPlayer   = 10
-	uidEntityRat      = 11
-	uidEntityJumpLink = 12
-	uidEntityReveal   = 13
-	uidEntityRift     = 14
+	uidEntityPlayer    = 10
+	uidEntityRat       = 11
+	uidEntityJumpLink  = 12
+	uidEntityReveal    = 13
+	uidEntityRift      = 14
+	uidEntityMiniBoss        = 15 // level-1 boss encounter (ground)
+	uidEntityBoss            = 16 // level-2 boss encounter (ground)
+	uidEntitySuperBoss       = 17 // level-3 boss encounter (ground)
+	uidEntityFlyingMiniBoss  = 18 // level-1 boss encounter (flying)
+	uidEntityFlyingBoss      = 19 // level-2 boss encounter (flying)
+	uidEntityFlyingSuperBoss = 20 // level-3 boss encounter (flying)
+	uidEntityRiftZone        = 21 // zone where rifts may spawn (dim purple)
+	uidEntityPortalZone      = 22 // static portal location at ground level (gold)
 
-	uidFieldTarget   = 20
-	uidFieldLabel    = 21
-	uidFieldArrivalX = 22
-	uidFieldArrivalY = 23
-	uidFieldKind     = 24
+	uidFieldTarget   = 30
+	uidFieldLabel    = 31
+	uidFieldArrivalX = 32
+	uidFieldArrivalY = 33
+	uidFieldKind     = 34
 )
 
 // ─── WriteLDtkFile ────────────────────────────────────────────────────────────
@@ -321,7 +330,8 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 		RequiredTags:    []string{},
 		ExcludedTags:    []string{},
 		IntGridValues: []ldtkIntGridValue{
-			{Value: 1, Identifier: "solid", Color: "#826B4E", Tile: nil, GroupUid: 0},
+			{Value: 1, Identifier: "solid",    Color: "#826B4E", Tile: nil, GroupUid: 0},
+			{Value: 3, Identifier: "platform", Color: "#5BAA72", Tile: nil, GroupUid: 0},
 		},
 		IntGridValuesGroups: []interface{}{},
 		AutoRuleGroups:      []interface{}{},
@@ -356,6 +366,18 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 		makeEntityDef("JumpLink", uidEntityJumpLink, "#00CCFF", 56, 56),
 		makeEntityDef("RevealZone", uidEntityReveal, "#FFFF00", 64, 64),
 		makeEntityDef("Rift", uidEntityRift, "#FF4444", 32, 32),
+		// Boss encounter markers — colours match maprenderer.go bossSpawnColors.
+		// Ground bosses: filled squares.
+		makeEntityDef("MiniBoss",        uidEntityMiniBoss,        "#B482FF", 16, 16), // soft lavender
+		makeEntityDef("Boss",            uidEntityBoss,            "#FF5050", 16, 16), // vivid crimson
+		makeEntityDef("SuperBoss",       uidEntitySuperBoss,       "#FFC832", 16, 16), // molten gold
+		// Flying bosses: same hue but lighter tint (diamond in the game renderer).
+		makeEntityDef("FlyingMiniBoss",  uidEntityFlyingMiniBoss,  "#D8B8FF", 16, 16), // pale lavender
+		makeEntityDef("FlyingBoss",      uidEntityFlyingBoss,      "#FF9090", 16, 16), // pale crimson
+		makeEntityDef("FlyingSuperBoss", uidEntityFlyingSuperBoss, "#FFE882", 16, 16), // pale gold
+		// Zone overlays — resizable rectangles drawn on the map.
+		makeZoneEntityDef("RiftZone",   uidEntityRiftZone,   "#8844DD", 0.15, true),  // dim purple, hollow
+		makeZoneEntityDef("PortalZone", uidEntityPortalZone, "#DDBB00", 0.20, false), // gold, semi-filled
 	}
 	// Add field defs to JumpLink (index 2).
 	entityDefs[2].FieldDefs = []ldtkFieldDef{
@@ -381,12 +403,18 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 		gw, gh := lvl.GridW, lvl.GridH
 		levelUID := i + 1
 
-		// IntGrid CSV: row-major flat array (0 = air, 1 = solid).
+		// IntGrid CSV: row-major flat array (0 = air, 1 = solid, 3 = platform).
 		csv := make([]int, gw*gh)
 		for _, cell := range lvl.SolidCells {
 			col, row := cell[0], cell[1]
 			if col >= 0 && col < gw && row >= 0 && row < gh {
 				csv[row*gw+col] = 1
+			}
+		}
+		for _, cell := range lvl.PlatformCells {
+			col, row := cell[0], cell[1]
+			if col >= 0 && col < gw && row >= 0 && row < gh {
+				csv[row*gw+col] = 3
 			}
 		}
 
@@ -403,6 +431,22 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 				defUID = uidEntityReveal
 			case "Rift":
 				defUID = uidEntityRift
+			case "MiniBoss":
+				defUID = uidEntityMiniBoss
+			case "Boss":
+				defUID = uidEntityBoss
+			case "SuperBoss":
+				defUID = uidEntitySuperBoss
+			case "FlyingMiniBoss":
+				defUID = uidEntityFlyingMiniBoss
+			case "FlyingBoss":
+				defUID = uidEntityFlyingBoss
+			case "FlyingSuperBoss":
+				defUID = uidEntityFlyingSuperBoss
+			case "RiftZone":
+				defUID = uidEntityRiftZone
+			case "PortalZone":
+				defUID = uidEntityPortalZone
 			}
 
 			fields := make([]ldtkWriteField, len(ent.Fields))
@@ -620,6 +664,20 @@ func makeEntityDef(id string, uid int, color string, w, h int) ldtkWriteEntityDe
 		PivotY:          1,
 		FieldDefs:       []ldtkFieldDef{},
 	}
+}
+
+// makeZoneEntityDef creates an entity definition for a resizable zone overlay.
+// fillOpacity controls how filled the zone rectangle appears in LDtk.
+// hollow=true draws only the border.
+func makeZoneEntityDef(id string, uid int, color string, fillOpacity float64, hollow bool) ldtkWriteEntityDef {
+	d := makeEntityDef(id, uid, color, 32, 32)
+	d.FillOpacity = fillOpacity
+	d.LineOpacity = 0.9
+	d.Hollow = hollow
+	d.ShowName = false
+	d.PivotX = 0
+	d.PivotY = 0
+	return d
 }
 
 // makeFieldDef creates a field definition for an entity.

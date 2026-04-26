@@ -2,7 +2,11 @@
   "bindings": {
     "attack": {
       "kind": "key",
-      "code": 8
+      "code": 5
+    },
+    "drop_down": {
+      "kind": "key",
+      "code": 18
     },
     "interact": {
       "kind": "key",

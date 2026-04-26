@@ -17,9 +17,10 @@ func (g *Game) openSettings() {
 	g.screen = screenSettings
 	g.awaitingBinding = false
 	g.bindingCapturePrimed = false
-	g.settingsStatus = "Click action to rebind. Backspace resets one action. R resets all. Esc closes."
+	g.settingsStatus = "Click a button to rebind. ESC to return."
 }
 
+// closeSettings возвращает игрока на экран, с которого он пришел
 func (g *Game) closeSettings() {
 	g.awaitingBinding = false
 	g.screen = g.previousScreen
@@ -31,77 +32,47 @@ func (g *Game) updateSettings() {
 		return
 	}
 
-	for index := range actionOrder {
-		rowRect := shared.Rect{X: 208, Y: float64(212 + index*72), W: 864, H: 58}
-		if uiClick(rowRect) {
-			g.settingsSelection = index
-			g.awaitingBinding = true
-			g.bindingCapturePrimed = false
-			g.settingsStatus = fmt.Sprintf("Press a key or mouse button for %s. Esc cancels.", ActionLabel(actionOrder[g.settingsSelection]))
-			return
-		}
-	}
-	if uiClick(shared.Rect{X: 208, Y: 152, W: 156, H: 36}) {
-		g.awaitingBinding = true
-		g.bindingCapturePrimed = false
-		g.settingsStatus = fmt.Sprintf("Press a key or mouse button for %s. Esc cancels.", ActionLabel(actionOrder[g.settingsSelection]))
-		return
-	}
-	if uiClick(shared.Rect{X: 382, Y: 152, W: 166, H: 36}) {
-		action := actionOrder[g.settingsSelection]
-		g.controls.Reset(action)
-		g.saveControls(fmt.Sprintf("%s reset to %s.", ActionLabel(action), BindingLabel(g.controls, action)))
-		return
-	}
-	if uiClick(shared.Rect{X: 566, Y: 152, W: 166, H: 36}) {
-		g.controls.ResetAll()
-		g.saveControls("All actions restored to defaults.")
-		return
-	}
-	if uiClick(shared.Rect{X: 950, Y: 152, W: 122, H: 36}) {
-		g.closeSettings()
-		return
-	}
-
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		g.closeSettings()
 		return
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
-		g.settingsSelection--
-		if g.settingsSelection < 0 {
-			g.settingsSelection = len(actionOrder) - 1
+
+	startX, startY, rowH := 200.0, 140.0, 45.0
+
+	for i, action := range actionOrder {
+		// Область кнопки (справа от названия действия)
+		bindRect := shared.Rect{X: startX + 400, Y: startY + float64(i)*rowH, W: 250, H: 35}
+
+		if uiClick(bindRect) {
+			g.settingsSelection = i
+			g.awaitingBinding = true
+			g.bindingCapturePrimed = false // Нужно для игнорирования текущего клика
+			return
+		}
+
+		if uiSecondaryClick(bindRect) {
+			g.controls.Reset(action)
+			g.saveControls(fmt.Sprintf("%s reset to default.", ActionLabel(action)))
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-		g.settingsSelection = (g.settingsSelection + 1) % len(actionOrder)
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		g.awaitingBinding = true
-		g.bindingCapturePrimed = false
-		g.settingsStatus = fmt.Sprintf("Press a key or mouse button for %s. Esc cancels.", ActionLabel(actionOrder[g.settingsSelection]))
-		return
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
-		action := actionOrder[g.settingsSelection]
-		g.controls.Reset(action)
-		g.saveControls(fmt.Sprintf("%s reset to %s.", ActionLabel(action), BindingLabel(g.controls, action)))
-		return
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+
+	// Кнопка Reset All
+	resetAllRect := shared.Rect{X: startX, Y: 620, W: 180, H: 35}
+	if uiClick(resetAllRect) {
 		g.controls.ResetAll()
-		g.saveControls("All actions restored to defaults.")
+		g.saveControls("All controls reset to defaults.")
 	}
 }
 
+// updateBindingCapture ловит нажатие новой клавиши или кнопки мыши
 func (g *Game) updateBindingCapture() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		g.awaitingBinding = false
-		g.bindingCapturePrimed = false
 		g.settingsStatus = "Binding cancelled."
 		return
 	}
 
+	// Ждем, пока игрок отпустит кнопку мыши, которой он нажал на "Bind"
 	if !g.bindingCapturePrimed {
 		if anyBindingSourcePressed() {
 			return
@@ -110,94 +81,93 @@ func (g *Game) updateBindingCapture() {
 		return
 	}
 
-	for _, button := range []ebiten.MouseButton{ebiten.MouseButtonLeft, ebiten.MouseButtonRight, ebiten.MouseButtonMiddle, ebiten.MouseButton3, ebiten.MouseButton4} {
-		if !inpututil.IsMouseButtonJustPressed(button) {
-			continue
+	action := actionOrder[g.settingsSelection]
+
+	// Проверяем кнопки мыши
+	mouseButtons := []ebiten.MouseButton{
+		ebiten.MouseButtonLeft, ebiten.MouseButtonRight, ebiten.MouseButtonMiddle,
+		ebiten.MouseButton3, ebiten.MouseButton4,
+	}
+	for _, btn := range mouseButtons {
+		if inpututil.IsMouseButtonJustPressed(btn) {
+			g.controls.Set(action, MouseBinding(btn))
+			g.awaitingBinding = false
+			g.saveControls(fmt.Sprintf("%s bound to %s.", ActionLabel(action), MouseButtonLabel(btn)))
+			return
 		}
-		action := actionOrder[g.settingsSelection]
-		g.controls.Set(action, MouseBinding(button))
-		g.awaitingBinding = false
-		g.bindingCapturePrimed = false
-		g.saveControls(fmt.Sprintf("%s bound to %s.", ActionLabel(action), MouseButtonLabel(button)))
-		return
 	}
 
+	// Проверяем клавиатуру
 	keys := inpututil.AppendJustPressedKeys(nil)
-	if len(keys) == 0 {
-		return
-	}
-
-	for _, key := range keys {
-		if key == ebiten.KeyEscape || key == ebiten.KeyF1 {
+	for _, k := range keys {
+		// Игнорируем системные клавиши
+		if k == ebiten.KeyEscape || k == ebiten.KeyF1 {
 			continue
 		}
-		action := actionOrder[g.settingsSelection]
-		g.controls.Set(action, KeyBinding(key))
+		g.controls.Set(action, KeyBinding(k))
 		g.awaitingBinding = false
-		g.bindingCapturePrimed = false
-		g.saveControls(fmt.Sprintf("%s bound to %s.", ActionLabel(action), KeyLabel(key)))
+		g.saveControls(fmt.Sprintf("%s bound to %s.", ActionLabel(action), KeyLabel(k)))
 		return
 	}
 }
 
-func (g *Game) saveControls(successMessage string) {
+func (g *Game) saveControls(msg string) {
 	if err := g.controls.Save(g.settingsPath); err != nil {
-		g.settingsStatus = fmt.Sprintf("Save settings failed: %v", err)
-		return
+		g.settingsStatus = fmt.Sprintf("Save error: %v", err)
+	} else {
+		g.settingsStatus = msg
 	}
-	g.settingsStatus = successMessage
 }
 
 func (g *Game) drawSettings(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{11, 15, 21, 255})
-	drawPanel(screen, shared.Rect{X: 170, Y: 72, W: 940, H: 576}, color.RGBA{17, 27, 38, 240}, color.RGBA{90, 150, 210, 255}, 2)
+	// Фон
+	vector.DrawFilledRect(screen, 0, 0, float32(shared.ScreenWidth), float32(shared.ScreenHeight), color.RGBA{10, 15, 20, 230}, false)
 
-	ebitenutil.DebugPrintAt(screen, "Client Settings", 208, 104)
-	ebitenutil.DebugPrintAt(screen, "Click an action row, then press a key or mouse button.", 208, 128)
+	panelRect := shared.Rect{X: 150, Y: 50, W: 980, H: 620}
+	drawPanel(screen, panelRect, color.RGBA{25, 35, 50, 250}, color.RGBA{70, 110, 180, 255}, 2)
 
-	actions := []struct {
-		label string
-		rect  shared.Rect
-	}{
-		{label: "Rebind", rect: shared.Rect{X: 208, Y: 152, W: 156, H: 36}},
-		{label: "Reset Row", rect: shared.Rect{X: 382, Y: 152, W: 166, H: 36}},
-		{label: "Reset All", rect: shared.Rect{X: 566, Y: 152, W: 166, H: 36}},
-		{label: "Close", rect: shared.Rect{X: 950, Y: 152, W: 122, H: 36}},
-	}
-	for _, button := range actions {
-		drawButton(screen, button.rect, false, uiHover(button.rect))
-		ebitenutil.DebugPrintAt(screen, button.label, int(button.rect.X)+16, int(button.rect.Y)+11)
-	}
+	ebitenutil.DebugPrintAt(screen, "CONTROL SETTINGS", 200, 80)
+	ebitenutil.DebugPrintAt(screen, "LEFT CLICK: BIND | RIGHT CLICK: RESET | ESC: BACK", 200, 105)
 
-	y := 212
-	for index, action := range actionOrder {
-		fill := color.RGBA{18, 30, 42, 220}
-		stroke := color.RGBA{60, 90, 120, 255}
-		rowRect := shared.Rect{X: 208, Y: float64(y), W: 864, H: 58}
-		if index == g.settingsSelection {
-			fill = color.RGBA{34, 50, 70, 235}
-			stroke = color.RGBA{120, 190, 235, 255}
-		} else if uiHover(rowRect) {
-			fill = color.RGBA{28, 42, 58, 230}
-			stroke = color.RGBA{96, 156, 200, 255}
+	startX, startY, rowH := 200.0, 140.0, 45.0
+
+	for i, action := range actionOrder {
+		y := startY + float64(i)*rowH
+
+		// Название действия
+		ebitenutil.DebugPrintAt(screen, ActionLabel(action), int(startX), int(y)+8)
+
+		// Рисуем кнопку
+		bindRect := shared.Rect{X: startX + 400, Y: y, W: 250, H: 35}
+		isWaiting := g.awaitingBinding && g.settingsSelection == i
+
+		btnClr := color.RGBA{45, 55, 75, 255}
+		if isWaiting {
+			btnClr = color.RGBA{150, 100, 20, 255} // Подсвечиваем оранжевым
+		} else if uiHover(bindRect) {
+			btnClr = color.RGBA{60, 75, 100, 255}
 		}
-		vector.DrawFilledRect(screen, 208, float32(y), 864, 58, fill, false)
-		vector.StrokeRect(screen, 208, float32(y), 864, 58, 1, stroke, false)
-		ebitenutil.DebugPrintAt(screen, ActionLabel(action), 232, y+12)
-		ebitenutil.DebugPrintAt(screen, BindingLabel(g.controls, action), 856, y+12)
-		y += 72
+
+		drawPanel(screen, bindRect, btnClr, color.RGBA{120, 150, 200, 255}, 1)
+
+		label := BindingLabel(g.controls, action)
+		if isWaiting {
+			label = "> PRESS KEY <"
+		}
+		ebitenutil.DebugPrintAt(screen, label, int(bindRect.X)+20, int(y)+8)
 	}
 
-	if g.awaitingBinding {
-		vector.DrawFilledRect(screen, 276, 512, 728, 70, color.RGBA{0, 0, 0, 190}, false)
-		vector.StrokeRect(screen, 276, 512, 728, 70, 1, color.RGBA{130, 190, 240, 255}, false)
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Waiting for key or mouse: %s", ActionLabel(actionOrder[g.settingsSelection])), 304, 538)
-	}
+	// Кнопка сброса всего
+	resetAllRect := shared.Rect{X: startX, Y: 620, W: 180, H: 35}
+	drawButton(screen, resetAllRect, false, uiHover(resetAllRect))
+	ebitenutil.DebugPrintAt(screen, "RESET ALL", int(resetAllRect.X)+55, int(resetAllRect.Y)+8)
 
-	ebitenutil.DebugPrintAt(screen, g.settingsStatus, 208, 614)
+	// Статус (результат сохранения)
+	ebitenutil.DebugPrintAt(screen, g.settingsStatus, int(startX)+250, 630)
 }
 
 func anyBindingSourcePressed() bool {
+	// Проверяем стандартные кнопки мыши
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) ||
 		ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight) ||
 		ebiten.IsMouseButtonPressed(ebiten.MouseButtonMiddle) ||
@@ -205,5 +175,6 @@ func anyBindingSourcePressed() bool {
 		ebiten.IsMouseButtonPressed(ebiten.MouseButton4) {
 		return true
 	}
+	// Проверяем, нажата ли любая клавиша на клавиатуре
 	return len(inpututil.AppendPressedKeys(nil)) > 0
 }

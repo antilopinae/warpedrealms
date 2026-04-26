@@ -352,7 +352,8 @@ func TestPopulateSkyAndObjects_GapFillBetweenWingEndpoints(t *testing.T) {
 		for x := leftEdge + 1; x <= rightEdge-restW; x++ {
 			ok := true
 			for dx := 0; dx < restW; dx++ {
-				if grid[y][x+dx] != sgCellSolid {
+				c := grid[y][x+dx]
+				if c != sgCellSolid && c != sgCellPlatform {
 					ok = false
 					break
 				}
@@ -536,6 +537,61 @@ func TestSandwichInletShaftsHaveZigZagPlatforms(t *testing.T) {
 	}
 }
 
+// TestShaftPlatformGapAfterInternalLedges ensures that sgAddInternalLedges does
+// not insert a ledge between two zigzag staircase steps in the inlet shaft,
+// which would create a gap smaller than sgPlayerH and block upward movement.
+func TestShaftPlatformGapAfterInternalLedges(t *testing.T) {
+	cfg := DefaultProcGenConfig
+	cfg.GridW = 200
+	cfg.GridH = 150
+	splitY := cfg.GridH / 2
+
+	rng := rand.New(rand.NewSource(42))
+	grid := makeBaseSandwichGrid(cfg.GridW, cfg.GridH, splitY)
+	inlets := sgBuildInlets(cfg.GridW, splitY, cfg)
+	if len(inlets) == 0 {
+		t.Skip("no inlets generated")
+	}
+	inlet := inlets[0]
+	shaft := sgCarveInletShaft(grid, inlet, splitY+40)
+	tags := sgNewSkyTagGrid(cfg.GridW, cfg.GridH)
+	sgAddInletZigZagPlatforms(grid, shaft, cfg, tags)
+
+	// Now run sgAddInternalLedges — it must not pollute the shaft.
+	sgAddInternalLedges(rng, grid, splitY, cfg)
+
+	// Collect all platform rows inside the shaft column range.
+	type platRow struct{ y, x int }
+	var plats []platRow
+	for y := shaft.TopY; y <= shaft.BottomY; y++ {
+		for x := shaft.Left; x <= shaft.Right; x++ {
+			if grid[y][x] == sgCellPlatform {
+				plats = append(plats, platRow{y, x})
+			}
+		}
+	}
+
+	// Group by row.
+	rowSet := map[int]bool{}
+	for _, p := range plats {
+		rowSet[p.y] = true
+	}
+	rows := make([]int, 0, len(rowSet))
+	for y := range rowSet {
+		rows = append(rows, y)
+	}
+	sort.Ints(rows)
+
+	// Every consecutive pair of platform rows must be at least sgPlayerH+1 apart
+	// so the player (height sgPlayerH) can move between them without clipping.
+	for i := 1; i < len(rows); i++ {
+		gap := rows[i] - rows[i-1]
+		if gap < sgPlayerH+1 {
+			t.Errorf("platform rows %d and %d are only %d rows apart (need >=%d); sgAddInternalLedges likely inserted a ledge inside the shaft zigzag", rows[i-1], rows[i], gap, sgPlayerH+1)
+		}
+	}
+}
+
 func TestSandwichGroundAirCorridorClearsOutsideWhitelist(t *testing.T) {
 	cfg := DefaultProcGenConfig
 	cfg.GridW = 200
@@ -688,8 +744,10 @@ func TestSandwichWallLedgesInTallVerticalSpan(t *testing.T) {
 
 	ledgeRows := 0
 	for y := splitY + 4; y < splitY+44; y++ {
-		leftPair := grid[y][shaftX] == sgCellSolid && grid[y][shaftX+1] == sgCellSolid
-		rightPair := grid[y][shaftX+shaftW-2] == sgCellSolid && grid[y][shaftX+shaftW-1] == sgCellSolid
+		leftPair := (grid[y][shaftX] == sgCellSolid || grid[y][shaftX] == sgCellPlatform) &&
+			(grid[y][shaftX+1] == sgCellSolid || grid[y][shaftX+1] == sgCellPlatform)
+		rightPair := (grid[y][shaftX+shaftW-2] == sgCellSolid || grid[y][shaftX+shaftW-2] == sgCellPlatform) &&
+			(grid[y][shaftX+shaftW-1] == sgCellSolid || grid[y][shaftX+shaftW-1] == sgCellPlatform)
 		if leftPair || rightPair {
 			ledgeRows++
 		}
@@ -753,7 +811,8 @@ func TestSandwichInternalLedgesAddedForTallSpaces(t *testing.T) {
 	ledgeCells := 0
 	for y := splitY + 1; y < cfg.GridH-1; y++ {
 		for x := 1; x < cfg.GridW-1; x++ {
-			if grid[y][x] != sgCellSolid {
+			// Internal ledges are now sgCellPlatform (one-way), not sgCellSolid.
+			if grid[y][x] != sgCellSolid && grid[y][x] != sgCellPlatform {
 				continue
 			}
 			if sgIsPassable(grid[y-1][x]) && sgIsPassable(grid[y+1][x]) {
@@ -928,14 +987,14 @@ func detectShaftPlatformRows(grid [][]int, left, right, yMin, yMax, minWidth int
 	for y := yMin; y <= yMax; y++ {
 		x := left
 		for x <= right {
-			for x <= right && grid[y][x] != sgCellSolid {
+			for x <= right && grid[y][x] != sgCellSolid && grid[y][x] != sgCellPlatform {
 				x++
 			}
 			if x > right {
 				break
 			}
 			start := x
-			for x <= right && grid[y][x] == sgCellSolid {
+			for x <= right && (grid[y][x] == sgCellSolid || grid[y][x] == sgCellPlatform) {
 				x++
 			}
 			end := x - 1
@@ -1408,5 +1467,66 @@ func TestIsValidFlagSetOnFullGeneration(t *testing.T) {
 	}
 	if invalid > 5 {
 		t.Errorf("too many invalid maps: %d/20 — generation reliability too low", invalid)
+	}
+}
+
+// TestDiagShaftPlatformDuplication runs the FULL generation pipeline and dumps
+// platform rows inside each inlet shaft so we can see if duplication happens and
+// at which step.
+func TestDiagShaftPlatformDuplication(t *testing.T) {
+	cfg := DefaultProcGenConfig
+	cfg.GridW = 200
+	cfg.GridH = 150
+	splitY := cfg.GridH / 2
+
+	for _, seed := range []int64{1, 8, 42} {
+		grid := makeBaseSandwichGrid(cfg.GridW, cfg.GridH, splitY)
+		inlets := sgBuildInlets(cfg.GridW, splitY, cfg)
+
+		type shaftSnap struct {
+			shaft sgShaft
+			rows  []int
+		}
+		var snaps []shaftSnap
+
+		for _, inlet := range inlets {
+			nearest := sgNearestHub(inlet, sgPlaceHubs(rand.New(rand.NewSource(seed)), grid, splitY, cfg))
+			_ = nearest
+			shaftBottom := splitY + max(4, sgScaleY(6, cfg)) + 20
+			shaft := sgCarveInletShaft(grid, inlet, shaftBottom)
+			tags := sgNewSkyTagGrid(cfg.GridW, cfg.GridH)
+			sgAddInletZigZagPlatforms(grid, shaft, cfg, tags)
+			snaps = append(snaps, shaftSnap{shaft: shaft})
+		}
+
+		// Run internal ledges just like the real pipeline
+		rng2 := rand.New(rand.NewSource(seed + 1000))
+		sgAddInternalLedges(rng2, grid, splitY, cfg)
+
+		// Now collect platform rows per shaft
+		for i, sn := range snaps {
+			sh := sn.shaft
+			rowSet := map[int]bool{}
+			for y := sh.TopY; y <= sh.BottomY; y++ {
+				for x := sh.Left; x <= sh.Right; x++ {
+					if grid[y][x] == sgCellPlatform {
+						rowSet[y] = true
+					}
+				}
+			}
+			rows := make([]int, 0, len(rowSet))
+			for y := range rowSet {
+				rows = append(rows, y)
+			}
+			sort.Ints(rows)
+			t.Logf("seed=%d shaft[%d] x=%d..%d y=%d..%d platforms at rows: %v", seed, i, sh.Left, sh.Right, sh.TopY, sh.BottomY, rows)
+
+			for j := 1; j < len(rows); j++ {
+				gap := rows[j] - rows[j-1]
+				if gap < sgPlayerH+1 {
+					t.Errorf("  FAIL seed=%d shaft[%d]: rows %d and %d gap=%d < %d", seed, i, rows[j-1], rows[j], gap, sgPlayerH+1)
+				}
+			}
+		}
 	}
 }

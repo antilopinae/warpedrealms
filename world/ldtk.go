@@ -187,17 +187,20 @@ func parseLDtkLevel(level ldtkLevel, tsByUID map[int]ldtkTilesetDef, baseDir, ld
 func ldtkExtractSolids(m *MapData, layer ldtkLayerInstance) {
 	gs := float64(layer.GridSize)
 	for idx, val := range layer.IntGridCSV {
-		if val == 0 {
-			continue
-		}
 		col := idx % layer.CWid
 		row := idx / layer.CWid
-		m.SolidRects = append(m.SolidRects, shared.Rect{
+		rect := shared.Rect{
 			X: float64(col) * gs,
 			Y: float64(row) * gs,
 			W: gs,
 			H: gs,
-		})
+		}
+		switch val {
+		case 1: // solid — full two-way collision
+			m.SolidRects = append(m.SolidRects, rect)
+		case 3: // one-way platform — passable from below, landable from above
+			m.PlatformRects = append(m.PlatformRects, rect)
+		}
 	}
 }
 

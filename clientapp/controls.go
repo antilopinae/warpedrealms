@@ -22,6 +22,7 @@ const (
 	ActionSkill3      Action = "skill_3"
 	ActionInteract    Action = "interact"
 	ActionUseJumpLink Action = "use_jump_link"
+	ActionDropDown    Action = "drop_down"
 )
 
 type BindingKind string
@@ -41,6 +42,7 @@ var actionOrder = []Action{
 	ActionSkill3,
 	ActionInteract,
 	ActionUseJumpLink,
+	ActionDropDown,
 }
 
 var actionLabels = map[Action]string{
@@ -84,6 +86,7 @@ var defaultBindings = map[Action]InputBinding{
 	ActionSkill3:      KeyBinding(ebiten.KeyR),
 	ActionInteract:    KeyBinding(ebiten.KeyF),
 	ActionUseJumpLink: KeyBinding(ebiten.KeyE),
+	ActionDropDown:    KeyBinding(ebiten.KeyS),
 }
 
 func KeyBinding(key ebiten.Key) InputBinding {

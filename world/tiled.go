@@ -22,7 +22,8 @@ type MapData struct {
 	// Nil / empty for maps that only carry collision geometry.
 	LDtkLayers []LDtkLayer
 
-	SolidRects   []shared.Rect  // collision rectangles (pixel coords)
+	SolidRects    []shared.Rect  // collision rectangles (pixel coords)
+	PlatformRects []shared.Rect  // one-way platform rects (pixel coords)
 	PlayerSpawns []shared.Vec2  // player spawn points
 	RatSpawns    []shared.Vec2  // rat / enemy spawn points
 	JumpLinks    []MapJumpLink  // portal / door connections

@@ -53,6 +53,8 @@ func (r *RaidRenderer) DrawScene(screen *ebiten.Image, layout shared.RaidLayoutS
 		if bgRoom, ok := layout.RoomByID(bgRoomID); ok {
 			bgSc, bgCam := bgRoomTransform(camera, scale, offset)
 			r.drawRoomAsBackground(screen, bgRoom, bgCam, offset, bgSc)
+			r.drawBgRoomObjects(screen, bgRoom, bgCam, offset, bgSc)
+			r.drawBgDepthHaze(screen, offset)
 		}
 	}
 
@@ -137,12 +139,108 @@ func (r *RaidRenderer) drawRoomAsBackground(screen *ebiten.Image, room shared.Ro
 		// to avoid blocking the view of the background room.
 	}
 
-	// Atmospheric depth haze over the whole background layer.
+}
+
+// drawBgDepthHaze overlays a dark atmospheric veil over the background room,
+// creating the illusion that it is far away.  Must be called after both
+// drawRoomAsBackground and drawBgRoomObjects so everything is dimmed uniformly.
+func (r *RaidRenderer) drawBgDepthHaze(screen *ebiten.Image, offset shared.Vec2) {
 	sb := screen.Bounds()
 	vector.DrawFilledRect(screen,
 		float32(offset.X), float32(offset.Y),
 		float32(float64(sb.Dx())-offset.X), float32(float64(sb.Dy())-offset.Y),
 		color.RGBA{6, 10, 20, 110}, false)
+}
+
+// drawBgRoomObjects renders all non-solid game objects of a background room:
+// tile layers, one-way platforms, boss spawn markers, portal zones, jump-link
+// portals, active rifts, PvP zones and decorations.  Everything is drawn at
+// bgAlpha (≈ 50 %) so it looks clearly distant but still readable.
+// Must be called BEFORE drawBgDepthHaze so the haze dims it uniformly.
+func (r *RaidRenderer) drawBgRoomObjects(screen *ebiten.Image, room shared.RoomState, camera shared.Vec2, offset shared.Vec2, scale float64) {
+	bgAlpha := 0.50
+
+	// ── Tile layers ───────────────────────────────────────────────────────────
+	r.drawTileLayers(screen, room, camera, offset, scale, bgAlpha)
+
+	// ── One-way platforms ─────────────────────────────────────────────────────
+	platFill, platRim := platformOneWayColors(bgAlpha)
+	for _, p := range room.Platforms {
+		screenX := offset.X + (p.X-camera.X)*scale
+		screenY := offset.Y + (p.Y-camera.Y)*scale
+		sw := float32(p.W * scale)
+		sh := float32(p.H * scale)
+		vector.DrawFilledRect(screen, float32(screenX), float32(screenY), sw, sh, platFill, false)
+		rimH := float32(math.Max(2, scale*2.5))
+		vector.DrawFilledRect(screen, float32(screenX), float32(screenY), sw, rimH, platRim, false)
+	}
+
+	// ── Boss spawn markers ────────────────────────────────────────────────────
+	blockPx := 16.0 * scale
+	for _, bs := range room.BossSpawns {
+		fill, rim := bossSpawnColors(bs.Level, bgAlpha)
+		screenX := float32(offset.X + (bs.X-camera.X)*scale)
+		screenY := float32(offset.Y + (bs.Y-camera.Y)*scale)
+		bw := float32(blockPx)
+		bh := float32(blockPx)
+		lineW := float32(math.Max(1, scale*1.5))
+		cx32 := screenX + bw*0.5
+		cy32 := screenY + bh*0.5
+		if bs.Flying {
+			half := bw * 0.5
+			vector.StrokeLine(screen, cx32, cy32-half, cx32+half, cy32, lineW, rim, false)
+			vector.StrokeLine(screen, cx32+half, cy32, cx32, cy32+half, lineW, rim, false)
+			vector.StrokeLine(screen, cx32, cy32+half, cx32-half, cy32, lineW, rim, false)
+			vector.StrokeLine(screen, cx32-half, cy32, cx32, cy32-half, lineW, rim, false)
+		} else {
+			vector.DrawFilledRect(screen, screenX, screenY, bw, bh, fill, false)
+			vector.StrokeRect(screen, screenX, screenY, bw, bh, lineW, rim, false)
+		}
+	}
+
+	// ── Portals (jump-links, cyan outline + portal FX) ───────────────────────
+	style, styleOK := r.assets.TileStyles[room.TileStyleID]
+	for _, link := range room.JumpLinks {
+		topLeft := shared.Vec2{X: offset.X + (link.Area.X-camera.X)*scale, Y: offset.Y + (link.Area.Y-camera.Y)*scale}
+		vector.StrokeRect(screen, float32(topLeft.X), float32(topLeft.Y), float32(link.Area.W*scale), float32(link.Area.H*scale), float32(math.Max(1.5, scale*1.5)), color.RGBA{110, 220, 255, uint8(180 * bgAlpha)}, false)
+		linkCenter := shared.Vec2{
+			X: topLeft.X + link.Area.W*scale*0.5,
+			Y: topLeft.Y + link.Area.H*scale*0.5,
+		}
+		r.drawEffect(screen, r.assets.FX.Portal, linkCenter.X-link.Area.W*scale*0.18, linkCenter.Y-link.Area.H*scale*0.08, scale*0.7, bgAlpha*0.9)
+		r.drawEffect(screen, r.assets.FX.PortalGlow, linkCenter.X-link.Area.W*scale*0.1, linkCenter.Y-link.Area.H*scale*0.16, scale*0.64, bgAlpha*0.8)
+		if styleOK && style.JumpPreview != nil {
+			r.drawImageAlpha(screen, style.JumpPreview, topLeft.X+link.Area.W*scale*0.18, topLeft.Y+link.Area.H*scale*0.15, scale*0.9, scale*0.9, bgAlpha)
+		}
+	}
+
+	// ── Active rifts ──────────────────────────────────────────────────────────
+	for _, rift := range room.Rifts {
+		if !rift.IsOpen() {
+			continue
+		}
+		clr := riftColor(rift.Kind, bgAlpha)
+		sx := float32(offset.X + (rift.Area.X-camera.X)*scale)
+		sy := float32(offset.Y + (rift.Area.Y-camera.Y)*scale)
+		sw, sh := float32(rift.Area.W*scale), float32(rift.Area.H*scale)
+		vector.DrawFilledRect(screen, sx, sy, sw, sh, color.RGBA{clr.R, clr.G, clr.B, uint8(float64(clr.A) * 0.18)}, false)
+		lineW := float32(math.Max(1.5, scale))
+		vector.StrokeRect(screen, sx, sy, sw, sh, lineW, clr, false)
+		mid := sx + sw*0.5
+		vector.StrokeLine(screen, mid-sw*0.15, sy+2, mid-sw*0.15, sy+sh-2, 1, clr, false)
+		vector.StrokeLine(screen, mid+sw*0.15, sy+2, mid+sw*0.15, sy+sh-2, 1, clr, false)
+		anchorW := float32(math.Max(2, scale*2))
+		vector.StrokeLine(screen, sx-anchorW, sy+sh, sx+sw+anchorW, sy+sh, anchorW, clr, false)
+	}
+
+	// ── PvP zones ─────────────────────────────────────────────────────────────
+	for _, zone := range room.PvPZones {
+		tl := shared.Vec2{X: offset.X + (zone.X-camera.X)*scale, Y: offset.Y + (zone.Y-camera.Y)*scale}
+		vector.StrokeRect(screen, float32(tl.X), float32(tl.Y), float32(zone.W*scale), float32(zone.H*scale), float32(math.Max(1, scale)), color.RGBA{245, 86, 86, uint8(160 * bgAlpha)}, false)
+	}
+
+	// ── Decorations + exits ───────────────────────────────────────────────────
+	r.drawDecorations(screen, room, camera, offset, scale, bgAlpha)
 }
 
 func (r *RaidRenderer) drawPreviewWindow(screen *ebiten.Image, preview roomPreview, camera shared.Vec2, offset shared.Vec2, scale float64) {
@@ -283,7 +381,57 @@ func (r *RaidRenderer) drawRoomGeometry(screen *ebiten.Image, room shared.RoomSt
 				}
 			}
 		}
+
+		// One-way platforms: distinct teal/green fill with a bright top rim.
+		// Drawn thinner than solid blocks to visually communicate pass-through.
+		platFill, platRim := platformOneWayColors(alpha)
+		for _, p := range room.Platforms {
+			screenX := offset.X + (p.X-camera.X)*scale
+			screenY := offset.Y + (p.Y-camera.Y)*scale
+			sw := float32(p.W * scale)
+			sh := float32(p.H * scale)
+			vector.DrawFilledRect(screen, float32(screenX), float32(screenY), sw, sh, platFill, false)
+			// Bright top rim — twice as thick as for solids, making the
+			// landing surface clearly visible.
+			rimH := float32(math.Max(3, scale*3))
+			vector.DrawFilledRect(screen, float32(screenX), float32(screenY), sw, rimH, platRim, false)
+		}
 	}
+	// Boss spawn markers — coloured 1-block squares with a bright outline.
+	// Level 1 (mini) = soft purple, level 2 (boss) = vivid red, level 3 (super) = gold.
+	blockPx := 16.0 * scale // one block in screen pixels
+	for _, bs := range room.BossSpawns {
+		fill, rim := bossSpawnColors(bs.Level, alpha)
+		screenX := float32(offset.X + (bs.X-camera.X)*scale)
+		screenY := float32(offset.Y + (bs.Y-camera.Y)*scale)
+		bw := float32(blockPx)
+		bh := float32(blockPx)
+		lineW := float32(math.Max(1.5, scale*1.5))
+		cx32 := screenX + bw*0.5
+		cy32 := screenY + bh*0.5
+		if bs.Flying {
+			// Flying bosses: diamond outline — four lines forming a rotated square.
+			// No fill inside so it reads clearly as "aerial".
+			half := bw * 0.5
+			vector.StrokeLine(screen, cx32, cy32-half, cx32+half, cy32, lineW, rim, false)
+			vector.StrokeLine(screen, cx32+half, cy32, cx32, cy32+half, lineW, rim, false)
+			vector.StrokeLine(screen, cx32, cy32+half, cx32-half, cy32, lineW, rim, false)
+			vector.StrokeLine(screen, cx32-half, cy32, cx32, cy32-half, lineW, rim, false)
+			// Thin fill: draw shrinking rects inside to give the diamond a tinted body.
+			for step := float32(1); step < half-lineW; step += 2 {
+				f := fill
+				f.A = uint8(float32(fill.A) * (1 - step/half))
+				vector.DrawFilledRect(screen, cx32-step, cy32-step, step*2, step*2, f, false)
+			}
+		} else {
+			// Ground bosses: solid filled square with bright outline.
+			vector.DrawFilledRect(screen, screenX, screenY, bw, bh, fill, false)
+			vector.StrokeRect(screen, screenX, screenY, bw, bh, lineW, rim, false)
+		}
+	}
+	// PortalZones are drawn only in debug mode (DrawDebugOverlays).
+	// Here we only render active JumpLinks (interactive portals) via the section below.
+	// Active rifts — rendered once below with color, shimmer, and ground anchor.
 	for _, zone := range room.PvPZones {
 		topLeft := shared.Vec2{X: offset.X + (zone.X-camera.X)*scale, Y: offset.Y + (zone.Y-camera.Y)*scale}
 		vector.StrokeRect(screen, float32(topLeft.X), float32(topLeft.Y), float32(zone.W*scale), float32(zone.H*scale), float32(math.Max(1, scale*2)), color.RGBA{245, 86, 86, uint8(160 * alpha)}, false)
@@ -302,21 +450,27 @@ func (r *RaidRenderer) drawRoomGeometry(screen *ebiten.Image, room shared.RoomSt
 		}
 	}
 
-	// Rifts — color-coded transient portals (no reveal zone).
+	// Rifts — color-coded transient portals standing on ground/platform.
 	for _, rift := range room.Rifts {
 		if !rift.IsOpen() {
 			continue
 		}
 		clr := riftColor(rift.Kind, alpha)
-		topLeft := shared.Vec2{X: offset.X + (rift.Area.X-camera.X)*scale, Y: offset.Y + (rift.Area.Y-camera.Y)*scale}
+		sx := float32(offset.X + (rift.Area.X-camera.X)*scale)
+		sy := float32(offset.Y + (rift.Area.Y-camera.Y)*scale)
 		sw, sh := float32(rift.Area.W*scale), float32(rift.Area.H*scale)
-		// Faint fill so the rift has presence even without an FX image.
-		vector.DrawFilledRect(screen, float32(topLeft.X), float32(topLeft.Y), sw, sh, color.RGBA{clr.R, clr.G, clr.B, uint8(float64(clr.A) * 0.18)}, false)
-		vector.StrokeRect(screen, float32(topLeft.X), float32(topLeft.Y), sw, sh, float32(math.Max(2, scale*1.5)), clr, false)
+		// Faint fill.
+		vector.DrawFilledRect(screen, sx, sy, sw, sh, color.RGBA{clr.R, clr.G, clr.B, uint8(float64(clr.A) * 0.18)}, false)
+		lineW := float32(math.Max(2, scale*1.5))
+		vector.StrokeRect(screen, sx, sy, sw, sh, lineW, clr, false)
 		// Vertical shimmer lines.
-		mid := float32(topLeft.X) + sw*0.5
-		vector.StrokeLine(screen, mid-sw*0.15, float32(topLeft.Y)+2, mid-sw*0.15, float32(topLeft.Y)+sh-2, 1, clr, false)
-		vector.StrokeLine(screen, mid+sw*0.15, float32(topLeft.Y)+2, mid+sw*0.15, float32(topLeft.Y)+sh-2, 1, clr, false)
+		mid := sx + sw*0.5
+		vector.StrokeLine(screen, mid-sw*0.15, sy+2, mid-sw*0.15, sy+sh-2, 1, clr, false)
+		vector.StrokeLine(screen, mid+sw*0.15, sy+2, mid+sw*0.15, sy+sh-2, 1, clr, false)
+		// Ground anchor — thick horizontal line at the rift base to ensure it
+		// looks flush to whatever surface it stands on.
+		anchorW := float32(math.Max(3, scale*3))
+		vector.StrokeLine(screen, sx-anchorW, sy+sh, sx+sw+anchorW, sy+sh, anchorW, clr, false)
 	}
 }
 
@@ -386,17 +540,48 @@ func (r *RaidRenderer) drawDecorations(screen *ebiten.Image, room shared.RoomSta
 	}
 }
 
-// DrawLowerEntities renders players and rats that are in the background room
-// (activeRoom.BelowRoomID) as dim ghost-like figures on top of that room's
-// geometry.  Uses the same bgCameraFor transform as drawRoomAsBackground so
-// entities sit exactly on the background terrain.
-func (r *RaidRenderer) DrawLowerEntities(screen *ebiten.Image, layout shared.RaidLayoutState, activeRoomID string, entities []shared.EntityState, camera shared.Vec2, offset shared.Vec2, scale float64) {
-	activeRoom, ok := layout.RoomByID(activeRoomID)
-	if !ok || activeRoom.BelowRoomID == "" {
-		return
+// DrawDebugOverlays renders zone overlays that are only useful during debugging:
+// rift spawn zones (dim teal) and reveal zones (dim yellow). Call only when
+// the debug-physics flag is active.
+func (r *RaidRenderer) DrawDebugOverlays(screen *ebiten.Image, room shared.RoomState, camera shared.Vec2, offset shared.Vec2, scale float64) {
+	const alpha = 1.0
+	// Rift spawn zones — dim teal fill + outline.
+	for _, zone := range room.RiftZones {
+		sx := float32(offset.X + (zone.X-camera.X)*scale)
+		sy := float32(offset.Y + (zone.Y-camera.Y)*scale)
+		sw := float32(zone.W * scale)
+		sh := float32(zone.H * scale)
+		vector.DrawFilledRect(screen, sx, sy, sw, sh, color.RGBA{30, 180, 160, 40}, false)
+		vector.StrokeRect(screen, sx, sy, sw, sh, float32(math.Max(1, scale)), color.RGBA{40, 220, 190, 120}, false)
 	}
-	belowRoom, ok := layout.RoomByID(activeRoom.BelowRoomID)
-	if !ok {
+	// Portal zones — gold fill (unconnected portal positions).
+	for _, zone := range room.PortalZones {
+		sx := float32(offset.X + (zone.X-camera.X)*scale)
+		sy := float32(offset.Y + (zone.Y-camera.Y)*scale)
+		sw := float32(zone.W * scale)
+		sh := float32(zone.H * scale)
+		vector.DrawFilledRect(screen, sx, sy, sw, sh, color.RGBA{255, 200, 60, 30}, false)
+		vector.StrokeRect(screen, sx, sy, sw, sh, float32(math.Max(1, scale)), color.RGBA{255, 220, 80, 100}, false)
+		cx32 := sx + sw*0.5
+		vector.StrokeLine(screen, cx32, sy+2, cx32, sy+sh-2, float32(math.Max(1, scale*0.5)), color.RGBA{255, 240, 140, 160}, false)
+	}
+	// Reveal zones — dim yellow outline so portal detection areas are visible.
+	for _, rz := range room.RevealZones {
+		sx := float32(offset.X + (rz.Area.X-camera.X)*scale)
+		sy := float32(offset.Y + (rz.Area.Y-camera.Y)*scale)
+		sw := float32(rz.Area.W * scale)
+		sh := float32(rz.Area.H * scale)
+		vector.StrokeRect(screen, sx, sy, sw, sh, float32(math.Max(1, scale)), color.RGBA{255, 230, 80, 100}, false)
+	}
+	_ = alpha
+}
+
+// DrawLowerEntities renders players and bots that are in the background room
+// as dim ghost-like figures on top of that room's geometry.
+// bgRoomID is the room currently rendered in the background (already resolved:
+// either a RevealZone target or BelowRoomID). Pass "" to skip rendering.
+func (r *RaidRenderer) DrawLowerEntities(screen *ebiten.Image, bgRoomID string, entities []shared.EntityState, camera shared.Vec2, offset shared.Vec2, scale float64) {
+	if bgRoomID == "" {
 		return
 	}
 
@@ -405,7 +590,7 @@ func (r *RaidRenderer) DrawLowerEntities(screen *ebiten.Image, layout shared.Rai
 	bgSc, bgCam := bgRoomTransform(camera, scale, offset)
 
 	for _, entity := range entities {
-		if entity.RoomID != belowRoom.ID {
+		if entity.RoomID != bgRoomID {
 			continue
 		}
 		frame := r.assets.IdleFrame(entity.ProfileID)
@@ -506,9 +691,42 @@ func riftColor(kind shared.RiftKind, alpha float64) color.RGBA {
 	return color.RGBA{200, 200, 200, a}
 }
 
+// bossSpawnColors returns a fill and rim colour for a boss spawn marker based on
+// boss level. Level 1 (mini) = muted purple; 2 (boss) = vivid crimson;
+// 3 (super) = bright gold. Unknown levels default to a neutral grey.
+func bossSpawnColors(level int, alpha float64) (fill, rim color.RGBA) {
+	a := uint8(255 * alpha)
+	switch level {
+	case 1: // mini boss — soft lavender
+		fill = color.RGBA{90, 55, 140, a}
+		rim = color.RGBA{180, 130, 255, a}
+	case 2: // boss — deep crimson
+		fill = color.RGBA{160, 30, 30, a}
+		rim = color.RGBA{255, 80, 80, a}
+	case 3: // super boss — molten gold
+		fill = color.RGBA{160, 100, 10, a}
+		rim = color.RGBA{255, 200, 50, a}
+	default:
+		fill = color.RGBA{80, 80, 80, a}
+		rim = color.RGBA{180, 180, 180, a}
+	}
+	return fill, rim
+}
+
 // platformColors returns a fill colour and a bright top-edge rim colour for
-// the fallback (no-tileset) solid-rect renderer.  Each biome gets a distinct
-// palette so locations feel visually different even without tile art.
+// platformOneWayColors returns fill and bright-rim colours for one-way platforms
+// (sgCellPlatform). Fixed teal palette — independent of biome — so the player
+// can immediately recognise pass-through surfaces regardless of location theme.
+func platformOneWayColors(alpha float64) (fill, rim color.RGBA) {
+	a := uint8(255 * alpha)
+	fill = color.RGBA{30, 110, 90, a}  // dark teal body
+	rim = color.RGBA{80, 220, 160, a}  // bright mint top edge
+	return fill, rim
+}
+
+// platformColors returns solid-terrain fill and rim colours for the fallback
+// (no-tileset) solid-rect renderer.  Each biome gets a distinct palette so
+// locations feel visually different even without tile art.
 func platformColors(biome string, alpha float64) (fill, rim color.RGBA) {
 	a := uint8(255 * alpha)
 	switch biome {

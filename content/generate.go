@@ -293,7 +293,8 @@ func (b *Bundle) buildRaidFromMaps(maps []*world.MapData) (*GeneratedRaid, error
 			Bounds:       shared.Rect{W: float64(m.PixelWidth), H: float64(m.PixelHeight)},
 			BackgroundID: "cave",
 			TileStyleID:  "cave",
-			Solids:       append([]shared.Rect(nil), m.SolidRects...),
+			Solids:    append([]shared.Rect(nil), m.SolidRects...),
+			Platforms: append([]shared.Rect(nil), m.PlatformRects...),
 		}
 	}
 

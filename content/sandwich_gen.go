@@ -21,6 +21,10 @@ const (
 	sgCellAir      = 0
 	sgCellSolid    = 1
 	sgCellBackwall = 2
+	// sgCellPlatform is a one-way platform: the player can jump through it from
+	// below and land on top. Rendered with a distinct colour. Not a full solid —
+	// does not block horizontal movement or upward passage.
+	sgCellPlatform = 3
 
 	sgBlockSizePx = 16
 )
@@ -211,8 +215,21 @@ type SandwichLocation struct {
 	Level         world.LDtkWriteLevel
 	SolidRects    []shared.Rect
 	BackwallRects []shared.Rect
+	// PlatformRects are one-way platforms (sgCellPlatform=3): passable from
+	// below, landable from above. Rendered with a distinct colour.
+	PlatformRects []shared.Rect
 	PrimarySpawn  shared.Vec2
 	SpawnPoints   []shared.Vec2
+	// BossSpawns lists planned boss encounter positions in pixel space.
+	// Level 1 = mini boss, 2 = boss, 3 = super boss.
+	BossSpawns []shared.BossSpawn
+	// RiftZones lists pixel-space rectangles where a rift is allowed to spawn.
+	// Each zone is a candidate location; the server picks among them each time a
+	// rift needs to materialise. Zones avoid boss rooms and favour sky platforms
+	// and underground tunnel mouths at ground level.
+	RiftZones []shared.Rect
+	// SplitY is the block-row that separates sky (y < SplitY) from underground.
+	SplitY int
 	// IsValid is false when pre-flight reachability checks fail.
 	// Callers (e.g. the server) should discard invalid maps and retry with a new seed.
 	IsValid bool
@@ -281,7 +298,7 @@ func GenerateSandwichLocation(rng *rand.Rand, id string, cfg ProcGenConfig) Sand
 	// Must run after shafts are carved so solid-ratio checks see actual density.
 	bossRooms := sgPlaceBossRoomsNearShafts(rng, grid, shafts, hubs, splitY, cfg, carveRadius)
 	// Place mini-boss side rooms adjacent to boss rooms (60% chance each).
-	sgPlaceMiniBossRooms(rng, grid, bossRooms, splitY)
+	miniBossRooms := sgPlaceMiniBossRooms(rng, grid, bossRooms, splitY)
 
 	sgConnectHubMST(rng, grid, hubs, carveRadius, edges)
 	// Extra return loop: 1 additional cross-connection.
@@ -297,10 +314,8 @@ func GenerateSandwichLocation(rng *rand.Rand, id string, cfg ProcGenConfig) Sand
 	// Apply organic noise texture to underground walls before MST tunneling.
 	sgApplySimplexTexture(rng, grid, splitY)
 
-	sgAddReturnLoops(rng, grid, splitY, inlets, hubs, carveRadius, cfg, skyTags)
-	sgAddExitTunnels(rng, grid, splitY, cfg, inlets, skyTags)
-	// sgAddWallLedges removed: 2-wide ledges are narrower than player width and
-	// create unreachable obstacles that clutter caves.
+	returnLoopUsed := sgAddReturnLoops(rng, grid, splitY, inlets, hubs, carveRadius, cfg, skyTags)
+	sgAddExitTunnels(rng, grid, splitY, cfg, inlets, skyTags, returnLoopUsed)
 	sgAddInternalLedges(rng, grid, splitY, cfg)
 	// Close single-cell horizontal gaps between solid platforms.
 	sgFillThinGaps(grid)
@@ -316,19 +331,24 @@ func GenerateSandwichLocation(rng *rand.Rand, id string, cfg ProcGenConfig) Sand
 	// sgCleanUpAndOptimizeGeometry is gone, so these steps will no longer be deleted.
 	sgEnsureGroundToSkyAccessibility(rng, grid, skyTags, skyDbg.Hubs, skyDbg.Chains, inlets, splitY, cfg)
 	sgEnsureGlobalPassableConnectivity(rng, grid, splitY, cfg, skyTags)
-	sgAddSkyPenthouses(rng, grid, skyTags, skyDbg.Hubs, cfg)
+	penthouses := sgAddSkyPenthouses(rng, grid, skyTags, skyDbg.Hubs, cfg)
+	skyDbg.Hubs = append(skyDbg.Hubs, penthouses...)
 	// Remove any sky-zone platform the player can never reach.
 	// Must run after all sky objects are placed, before preflight validation.
 	sgPruneUnreachableSkyPlatforms(grid, skyTags, splitY)
 
+	maxBossLevel := sgMaxBossLevelForZone(cfg.Zone)
+	bossSpawns := sgBuildBossSpawnList(grid, bossRooms, miniBossRooms, skyDbg.Hubs, splitY, gridH, maxBossLevel, sgBlockSizePx)
+
 	solidCells := sgCellsForValue(grid, sgCellSolid)
+	platformCells := sgCellsForValue(grid, sgCellPlatform)
 	spawnPoints := sgSpawnPointsFromInlets(inlets, cfg)
 	primarySpawn := shared.Vec2{}
 	if len(spawnPoints) > 0 {
 		primarySpawn = spawnPoints[0]
 	}
 
-	entities := make([]world.LDtkWriteEntity, 0, 1)
+	entities := make([]world.LDtkWriteEntity, 0, 1+len(bossSpawns))
 	if len(spawnPoints) > 0 {
 		entities = append(entities, world.LDtkWriteEntity{
 			Identifier: "Player",
@@ -339,13 +359,45 @@ func GenerateSandwichLocation(rng *rand.Rand, id string, cfg ProcGenConfig) Sand
 		})
 	}
 
+	bossEntityName := func(level int, flying bool) string {
+		if flying {
+			switch level {
+			case 1:
+				return "FlyingMiniBoss"
+			case 3:
+				return "FlyingSuperBoss"
+			default:
+				return "FlyingBoss"
+			}
+		}
+		switch level {
+		case 1:
+			return "MiniBoss"
+		case 3:
+			return "SuperBoss"
+		default:
+			return "Boss"
+		}
+	}
+
+	for _, bs := range bossSpawns {
+		entities = append(entities, world.LDtkWriteEntity{
+			Identifier: bossEntityName(bs.Level, bs.Flying),
+			PX:         int(bs.X),
+			PY:         int(bs.Y),
+			W:          sgBlockSizePx,
+			H:          sgBlockSizePx,
+		})
+	}
+
 	level := world.LDtkWriteLevel{
-		ID:         id,
-		GridW:      gridW,
-		GridH:      gridH,
-		GridSize:   sgBlockSizePx,
-		SolidCells: solidCells,
-		Entities:   entities,
+		ID:            id,
+		GridW:         gridW,
+		GridH:         gridH,
+		GridSize:      sgBlockSizePx,
+		SolidCells:    solidCells,
+		PlatformCells: platformCells,
+		Entities:      entities,
 	}
 
 	isValid := sgRunPreflightValidation(grid, skyTags, skyDbg.Hubs, inlets, splitY)
@@ -357,97 +409,14 @@ func GenerateSandwichLocation(rng *rand.Rand, id string, cfg ProcGenConfig) Sand
 		Level:         level,
 		SolidRects:    GenerateRects(grid, sgCellSolid),
 		BackwallRects: GenerateRects(grid, sgCellBackwall),
+		PlatformRects: GenerateRects(grid, sgCellPlatform),
+		BossSpawns:    bossSpawns,
+		RiftZones:     sgBuildRiftZones(grid, skyTags, bossRooms, miniBossRooms, splitY, sgBlockSizePx),
+		SplitY:        splitY,
 		PrimarySpawn:  primarySpawn,
 		SpawnPoints:   spawnPoints,
 		IsValid:       isValid,
 	}
-}
-
-func sgCleanUpAndOptimizeGeometry(grid [][]int, splitY int, tags *sgSkyTagGrid) {
-	if len(grid) == 0 {
-		return
-	}
-	width := len(grid[0])
-	height := len(grid)
-
-	// 1. Инициализируем canReach ПРАВИЛЬНО
-	canReach := make([][]bool, height)
-	for i := 0; i < height; i++ {
-		canReach[i] = make([]bool, width)
-	}
-	sgMarkReachable(grid, canReach, splitY)
-
-	// 2. Инициализируем isUsed ПРАВИЛЬНО (вот тут была ошибка)
-	isUsed := make([][]bool, height)
-	for i := 0; i < height; i++ {
-		isUsed[i] = make([]bool, width)
-	}
-
-	// Помечаем блоки, на которых реально стоит нога игрока
-	for y := 0; y < height-1; y++ {
-		for x := 0; x < width; x++ {
-			// Если клетка над этим блоком (y) достижима для ног игрока,
-			// а сам блок (y+1) — твердый, значит он используется.
-			if grid[y+1][x] == sgCellSolid && canReach[y][x] {
-				isUsed[y+1][x] = true
-			}
-		}
-	}
-
-	// 3. УДАЛЕНИЕ ЛИШНЕГО
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			if grid[y][x] == sgCellSolid {
-				// Оставляем всё, что ниже поверхности (основная земля)
-				if y >= splitY {
-					continue
-				}
-
-				// Оставляем Хабы (острова), так как это архитектура
-				if tags != nil && tags.At(x, y).Kind == sgSkyObjectHub {
-					continue
-				}
-
-				// Если блок не используется игроком для ходьбы и это не Хаб — удаляем
-				if !isUsed[y][x] {
-					// Дополнительная проверка, чтобы не откусить блоки, прилегающие к Хабам
-					if !sgIsNearHub(x, y, tags) {
-						grid[y][x] = sgCellAir
-						if tags != nil {
-							tags.ClearCell(x, y)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// 4. ОБЪЕДИНЕНИЕ (Merging) — затыкаем дырки в 1 блок между полезными платформами
-	for y := 1; y < height-1; y++ {
-		for x := 1; x < width-1; x++ {
-			if grid[y][x] == sgCellAir && grid[y][x-1] == sgCellSolid && grid[y][x+1] == sgCellSolid {
-				// Если это тонкая платформа и обе её части используются
-				if grid[y-1][x] == sgCellAir && isUsed[y][x-1] && isUsed[y][x+1] {
-					grid[y][x] = sgCellSolid
-				}
-			}
-		}
-	}
-}
-
-// Помощник: проверяет, не является ли блок частью или соседом Хаба
-func sgIsNearHub(x, y int, tags *sgSkyTagGrid) bool {
-	if tags == nil {
-		return false
-	}
-	for dy := -1; dy <= 1; dy++ {
-		for dx := -1; dx <= 1; dx++ {
-			if tags.At(x+dx, y+dy).Kind == sgSkyObjectHub {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func sgEnsureJumpConnectivity(grid [][]int, splitY int, cfg ProcGenConfig) {
@@ -507,7 +476,6 @@ func sgEnsureJumpConnectivity(grid [][]int, splitY int, cfg ProcGenConfig) {
 	}
 }
 
-// sgDigToSafety копает строгие прямоугольные коридоры и шахты.
 // sgCarvePlayerCorridor carves a horizontal tunnel from x1 to x2 at standing row y.
 // The tunnel is exactly sgPlayerW wide (extending the path by pW-1) and sgPlayerH tall
 // (from y-sgPlayerH+1 to y), so a player standing at y can walk through without
@@ -529,7 +497,7 @@ func sgDigToSafety(grid [][]int, canEscape [][]bool, splitY, startX, startY int)
 	width := len(grid[0])
 	height := len(grid)
 
-	// 1. Ищем ближайшую безопасную точку (по воздуху и полу)
+	// Ищем ближайшую безопасную точку (по воздуху и полу)
 	type point struct{ x, y int }
 	queue := []point{{startX, startY}}
 	visited := make([][]bool, height)
@@ -563,7 +531,7 @@ func sgDigToSafety(grid [][]int, canEscape [][]bool, splitY, startX, startY int)
 		target = &point{startX, splitY + 2} // Резервный выход на поверхность
 	}
 
-	// 2. Копаем ВЕРТИКАЛЬНУЮ ШАХТУ ВВЕРХ
+	// Копаем ВЕРТИКАЛЬНУЮ ШАХТУ ВВЕРХ
 	// Начинаем чуть выше пола ямы, чтобы гарантированно не разрушить пол
 	digStartY := startY - 2
 	if digStartY < 1 {
@@ -591,7 +559,7 @@ func sgDigToSafety(grid [][]int, canEscape [][]bool, splitY, startX, startY int)
 		}
 	}
 
-	// 3. Копаем ГОРИЗОНТАЛЬНЫЙ ТУННЕЛЬ ВБОК
+	// Копаем ГОРИЗОНТАЛЬНЫЙ ТУННЕЛЬ ВБОК
 	stepX := 1
 	if target.x < startX {
 		stepX = -1
@@ -608,7 +576,7 @@ func sgDigToSafety(grid [][]int, canEscape [][]bool, splitY, startX, startY int)
 		}
 	}
 
-	// 4. Если прорубили наверх — ставим зигзагообразные платформы шириной sgPlayerW
+	// Если прорубили наверх — ставим зигзагообразные платформы шириной sgPlayerW
 	if targetY < startY-6 {
 		platW := sgPlayerW // Минимум 3 блока — ровно под ширину игрока
 		shaftLeft := startX - 3
@@ -628,10 +596,36 @@ func sgDigToSafety(grid [][]int, canEscape [][]bool, splitY, startX, startY int)
 				platX = width - platW - 1
 			}
 
+			// Skip this row if an existing platform is already within sgPlayerH+1
+			// rows in any column of the shaft — this prevents sgDigToSafety from
+			// doubling up on zigzag steps that were already placed by
+			// sgAddInletZigZagPlatforms, sgAddReturnLoops, or sgAddExitTunnels.
+			tooClose := false
+			checkX0 := max(1, shaftLeft)
+			checkX1 := min(width-2, shaftLeft+7) // shaft is ~7 wide
+			for scanY := max(0, y-sgPlayerH-1); scanY <= min(height-1, y+sgPlayerH+1); scanY++ {
+				if scanY == y {
+					continue
+				}
+				for scanX := checkX0; scanX <= checkX1; scanX++ {
+					if grid[scanY][scanX] == sgCellPlatform {
+						tooClose = true
+						break
+					}
+				}
+				if tooClose {
+					break
+				}
+			}
+			if tooClose {
+				sideLeft = !sideLeft
+				continue
+			}
+
 			for i := 0; i < platW; i++ {
 				px := platX + i
 				if px >= 1 && px < width-1 {
-					grid[y][px] = sgCellSolid
+					grid[y][px] = sgCellPlatform
 					// Прорубаем sgPlayerH блоков воздуха над платформой
 					for pDy := 1; pDy < sgPlayerH; pDy++ {
 						if y-pDy >= 1 {
@@ -651,18 +645,20 @@ func sgMarkReachable(grid [][]int, canEscape [][]bool, splitY int) {
 
 func sgMarkReachableWithTags(grid [][]int, canEscape [][]bool, splitY int, tags *sgSkyTagGrid) {
 	width, height := len(grid[0]), len(grid)
-	pW, pH := sgPlayerW, sgPlayerH // Реальные габариты игрока (3×5 блоков)
+	pW, pH := sgPlayerW, sgPlayerH
 
 	// isSolidBlocking returns true for cells that physically block the player.
-	// Stairchain step cells are treated as one-way platforms: the player can
-	// jump through them from below and land on top, so they don't block arcs.
+	// sgCellPlatform cells (one-way platforms) and tagged stairchain steps are
+	// treated as passable from below so jump arcs can pass through them.
 	isSolidBlocking := func(tx, ty int) bool {
 		if ty < 0 || ty >= height || tx < 0 || tx >= width {
 			return true // out of bounds = blocked
 		}
-		if grid[ty][tx] != sgCellSolid {
-			return false
+		c := grid[ty][tx]
+		if c != sgCellSolid {
+			return false // air, backwall, or platform — all passable
 		}
+		// sgCellSolid: check if it's a tagged one-way step.
 		if tags != nil {
 			tag := tags.At(tx, ty)
 			if tag.Kind == sgSkyObjectSkyStepLeft ||
@@ -674,7 +670,17 @@ func sgMarkReachableWithTags(grid [][]int, canEscape [][]bool, splitY int, tags 
 		return true
 	}
 
-	// Проверка: влезет ли "тело" игрока 3х5 в точку x,y
+	// isFloor returns true if the cell below the feet is solid enough to stand on.
+	// Both regular solid cells and one-way platforms count as floor.
+	isFloor := func(tx, ty int) bool {
+		if ty < 0 || ty >= height || tx < 0 || tx >= width {
+			return false
+		}
+		c := grid[ty][tx]
+		return c == sgCellSolid || c == sgCellPlatform
+	}
+
+	// Проверка: влезет ли "тело" игрока в точку x,y
 	canFit := func(x, y int) bool {
 		for dy := 0; dy < pH; dy++ {
 			for dx := 0; dx < pW; dx++ {
@@ -703,14 +709,15 @@ func sgMarkReachableWithTags(grid [][]int, canEscape [][]bool, splitY int, tags 
 		curr := queue[head]
 		head++
 
-		// 1. ПЕРЕМЕЩЕНИЕ ПО ПОЛУ (влево-вправо)
+		// ПЕРЕМЕЩЕНИЕ ПО ПОЛУ (влево-вправо)
 		for _, dx := range []int{-1, 1} {
 			nx := curr.x + dx
 			if nx >= 0 && nx < width-pW && canFit(nx, curr.y) && !canEscape[curr.y][nx] {
-				// Проверяем наличие пола под ногами игрока (pW блоков ширины)
+				// Проверяем наличие пола под ногами игрока (pW блоков ширины).
+				// Платформы (sgCellPlatform) тоже считаются полом — стоять можно.
 				hasFloor := false
 				for fdx := 0; fdx < pW && nx+fdx < width; fdx++ {
-					if grid[curr.y+1][nx+fdx] == sgCellSolid {
+					if isFloor(nx+fdx, curr.y+1) {
 						hasFloor = true
 						break
 					}
@@ -722,7 +729,7 @@ func sgMarkReachableWithTags(grid [][]int, canEscape [][]bool, splitY int, tags 
 			}
 		}
 
-		// 2. ПРЫЖКИ — диапазон откалиброван по физике игрока:
+		// ПРЫЖКИ — диапазон откалиброван по физике игрока:
 		//    JumpSpeed=735 px/s, Gravity=2050 px/s², BlockSize=16 px →
 		//    max высота ≈8.2 блока, max горизонталь ≈10 блоков при беге.
 		//    При высоком прыжке (dy=-8) горизонталь ≈9 блоков одновременно.
@@ -741,10 +748,10 @@ func sgMarkReachableWithTags(grid [][]int, canEscape [][]bool, splitY int, tags 
 				}
 
 				if !canEscape[ny][nx] && canFit(nx, ny) {
-					// Приземление только на твердый пол (проверяем pW позиций)
+					// Приземление на твёрдый пол или платформу (пW позиций).
 					hasFloor := false
 					for fdx := 0; fdx < pW && nx+fdx < width; fdx++ {
-						if grid[ny+1][nx+fdx] == sgCellSolid {
+						if isFloor(nx+fdx, ny+1) {
 							hasFloor = true
 							break
 						}
@@ -760,6 +767,68 @@ func sgMarkReachableWithTags(grid [][]int, canEscape [][]bool, splitY int, tags 
 			}
 		}
 	}
+}
+
+// sgFindUndergroundRiftSurfaces ищет подходящие площадки для рифтов в подземелье.
+// Он проверяет только физическую возможность размещения (пол + свободное место),
+// не учитывая, может ли игрок дойти туда пешком от спавна.
+func sgFindUndergroundRiftSurfaces(grid [][]int, splitY int, bossRooms, miniBossRooms [][4]int, blockSize int) []shared.Rect {
+	gridH := len(grid)
+	gridW := len(grid[0])
+	var zones []shared.Rect
+
+	// Параметры рифта в блоках (примерно 2x3 блока)
+	const riftWidthBlocks = 2
+	const riftHeightBlocks = 5
+
+	// Проверка на вхождение в комнаты боссов (чтобы не спавнить рифты прямо в бою)
+	inBossArea := func(x, y int) bool {
+		for _, r := range append(bossRooms, miniBossRooms...) {
+			cx, cy, rx, ry := r[0], r[1], r[2], r[3]
+			if x >= cx-rx-1 && x <= cx+rx+1 && y >= cy-ry-1 && y <= cy+1 {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Сканируем всё, что ниже поверхности
+	for y := splitY + 1; y < gridH-riftHeightBlocks; y++ {
+		runStart := -1
+		for x := 0; x < gridW; x++ {
+			// Условие для потенциального пола рифта:
+			// 1. Клетка (x, y) - воздух или бэкволл
+			// 2. Клетка (x, y+1) - Solid ИЛИ Platform (ступеньки в шахтах)
+			// 3. Над клеткой (x, y) есть еще 2 свободных блока (высота рифта)
+			// 4. Мы не в комнате босса
+
+			hasFloor := grid[y+1][x] == sgCellSolid || grid[y+1][x] == sgCellPlatform
+			hasHeadroom := sgIsPassable(grid[y][x]) && sgIsPassable(grid[y-1][x]) && sgIsPassable(grid[y-2][x])
+
+			isValidSpot := hasFloor && hasHeadroom && !inBossArea(x, y)
+
+			if isValidSpot {
+				if runStart < 0 {
+					runStart = x
+				}
+			} else {
+				if runStart >= 0 {
+					runLen := x - runStart
+					// Если нашли хотя бы 2 блока ровного пола подряд
+					if runLen >= riftWidthBlocks {
+						zones = append(zones, shared.Rect{
+							X: float64(runStart * blockSize),
+							Y: float64((y - 1) * blockSize), // Ставим зону так, чтобы низ рифта был на уровне пола
+							W: float64(runLen * blockSize),
+							H: float64(2 * blockSize),
+						})
+					}
+					runStart = -1
+				}
+			}
+		}
+	}
+	return zones
 }
 
 // sgIsJumpPathClear checks if a player can jump from (x1,y1) to (x2,y2) by
@@ -944,7 +1013,7 @@ func sgExtendChainToGround(rng *rand.Rand, ch *sgStairChain, grid [][]int, tags 
 	}
 
 	for {
-		// 1. Ищем РЕАЛЬНУЮ землю под следующим шагом (учитывая туннели)
+		// Ищем землю под следующим шагом (учитывая туннели)
 		// Steer toward the designated inlet so the chain terminus lands within
 		// jump reach of an inlet entrance (~6 blocks horizontal).
 		trendDir := ch.TrendDir
@@ -963,7 +1032,7 @@ func sgExtendChainToGround(rng *rand.Rand, ch *sgStairChain, grid [][]int, tags 
 		// the player from fitting at the inlet entrance (player body is 4 tall).
 		realGroundY := min(sgFindDynamicGroundY(grid, nx, splitY), splitY)
 
-		// 2. Рассчитываем Y следующей ступеньки
+		// Рассчитываем Y следующей ступеньки
 		ny := curr.Y + vJump
 
 		// Если мы слишком близко к полу - ограничиваем высоту до предела прыжка
@@ -977,8 +1046,8 @@ func sgExtendChainToGround(rng *rand.Rand, ch *sgStairChain, grid [][]int, tags 
 			break
 		}
 
-		// 3. Ставим платформу
-		sgWriteSolidRect(grid, nx, ny, stepW, 1)
+		// Ставим платформу (one-way)
+		sgWritePlatformRect(grid, nx, ny, stepW, 1)
 
 		// Сразу проверяем плавное соединение с землей (1-2 блока)
 		sgSmoothConnectToGround(grid, nx, ny, stepW)
@@ -1004,10 +1073,8 @@ func sgExtendChainToGround(rng *rand.Rand, ch *sgStairChain, grid [][]int, tags 
 	}
 }
 
-func sgAddSkyPenthouses(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, hubs []sgSkyHub, cfg ProcGenConfig) {
-	if tags == nil || len(hubs) == 0 {
-		return
-	}
+func sgAddSkyPenthouses(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, hubs []sgSkyHub, cfg ProcGenConfig) []sgSkyHub {
+	var extraHubs []sgSkyHub
 
 	minTopMargin := 10
 	stackChance := 0.6
@@ -1033,6 +1100,10 @@ func sgAddSkyPenthouses(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, hubs [
 			objID := tags.NewObject(sgSkyObjectHub)
 			sgWriteSolidRect(grid, newX, newY, newW, floorH)
 			tags.MarkRect(newX, newY, newW, floorH, objID, sgSkyObjectHub)
+
+			extraHubs = append(extraHubs, sgSkyHub{
+				X: newX, Y: newY, W: newW, H: floorH, ObjectID: objID,
+			})
 
 			// ГЕНЕРИРУЕМ ЛЕСТНИЦЫ С ДВУХ СТОРОН
 			landingW := 8
@@ -1064,7 +1135,7 @@ func sgAddSkyPenthouses(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, hubs [
 							py -= 1
 						}
 
-						sgWriteSolidRect(grid, lx, py, landingW, 1)
+						sgWritePlatformRect(grid, lx, py, landingW, 1)
 						tags.MarkRect(lx, py, landingW, 1, stepID, sgSkyObjectSkyStepLeft)
 
 						// Ступеньки на одной стороне идут лесенкой вглубь или наружу
@@ -1081,6 +1152,7 @@ func sgAddSkyPenthouses(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, hubs [
 			currY, currX, currW = newY, newX, newW
 		}
 	}
+	return extraHubs
 }
 
 func sgBuildInlets(gridW int, splitY int, cfg ProcGenConfig) []sgInlet {
@@ -1153,11 +1225,11 @@ func sgPopulateSkyAndObjectsWithTags(rng *rand.Rand, grid [][]int, cfg ProcGenCo
 	skyTopMin := sgClamp(sgScaleY(25, cfg), 2, max(2, splitY-8))
 	skyTopMax := sgClamp(sgScaleY(55, cfg), skyTopMin, max(skyTopMin, splitY-4))
 
-	// 1. Размещаем основные хабы (летающие острова)
+	// Размещаем основные хабы (летающие острова)
 	hubs := sgPlaceSkyHubs(rng, grid, tags, hubCount, skyTopMin, skyTopMax, splitY, cfg)
 	dbg.Hubs = append(dbg.Hubs, hubs...)
 
-	// 2. Строим начальные крылья (3 ступени каждое). Полное продление до земли
+	// Строим начальные крылья (3 ступени каждое). Полное продление до земли
 	// с учётом позиций входов делается в sgEnsureGroundToSkyAccessibility, который
 	// получает список inlets и направляет цепочку к ближайшему входу.
 	stepW := max(sgPlayerW, sgScaleX(3, cfg))
@@ -1294,7 +1366,7 @@ func sgBuildSkyStaircaseWing(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, h
 	}
 
 	gridW := len(grid[0])
-	// Случайная ширина ступени: 3 или 4 блока (в пределах [sgPlayerW, sgPlayerW+1])
+	// Случайная ширина ступени: (в пределах [sgPlayerW, sgPlayerW+1])
 	stepW := sgPlayerW + rng.Intn(2)
 
 	// ПАРАМЕТРЫ КРУТИЗНЫ:
@@ -1320,7 +1392,7 @@ func sgBuildSkyStaircaseWing(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, h
 			break
 		}
 
-		sgWriteSolidRect(grid, x, y, stepW, 1)
+		sgWritePlatformRect(grid, x, y, stepW, 1)
 		tags.MarkRect(x, y, stepW, 1, objectID, kind)
 		chain.Steps = append(chain.Steps, sgPoint{X: x, Y: y})
 	}
@@ -1350,7 +1422,7 @@ func sgDistributeExtraSkySteps(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid,
 			idx := (cursor + attempt) % len(chains)
 			chain := &chains[idx]
 
-			// ПРОВЕРКА: Если цепочка уже внизу, не добавляем ей мусора
+			// Если цепочка уже внизу, не добавляем ей мусора
 			if len(chain.Steps) > 0 {
 				lastY := chain.Steps[len(chain.Steps)-1].Y
 				if lastY >= skyBoundaryY {
@@ -1461,7 +1533,7 @@ func sgAddSkyGapPlatformsWithTags(grid [][]int, tags *sgSkyTagGrid, hubs []sgSky
 			if !sgCanPlaceSkyStep(grid, px, ty, restW) {
 				continue
 			}
-			sgWriteSolidRect(grid, px, ty, restW, 1)
+			sgWritePlatformRect(grid, px, ty, restW, 1)
 			if tags != nil {
 				objID := tags.NewObject(sgSkyObjectSkyStepRight)
 				tags.MarkRect(px, ty, restW, 1, objID, sgSkyObjectSkyStepRight)
@@ -1472,7 +1544,7 @@ func sgAddSkyGapPlatformsWithTags(grid [][]int, tags *sgSkyTagGrid, hubs []sgSky
 		if !ok {
 			// Last resort: force a small bridge platform in the midpoint.
 			forceY := sgClamp(py, 1, max(1, splitY-1))
-			sgWriteSolidRect(grid, px, forceY, restW, 1)
+			sgWritePlatformRect(grid, px, forceY, restW, 1)
 			if tags != nil {
 				objID := tags.NewObject(sgSkyObjectSkyStepRight)
 				tags.MarkRect(px, forceY, restW, 1, objID, sgSkyObjectSkyStepRight)
@@ -1488,7 +1560,7 @@ func sgAppendExtraSkyStep(rng *rand.Rand, grid [][]int, tags *sgSkyTagGrid, chai
 		return false
 	}
 
-	// Случайная ширина ступени: 3 или 4 блока
+	// Случайная ширина ступени
 	stepW := sgPlayerW + rng.Intn(2)
 	dxMin := max(stepW+1, sgScaleX(7, cfg))
 	dxMax := max(dxMin, sgScaleX(10, cfg))
@@ -1574,7 +1646,9 @@ func sgTryPlaceSkyStepConstrained(grid [][]int, tags *sgSkyTagGrid, x, y, stepW 
 		if !sgSkyProjectionClear(grid, tags, nx, y, stepW, projectionH, objectID, splitY) {
 			continue
 		}
-		sgWriteSolidRect(grid, nx, y, stepW, 1)
+		// One-way sky step: write sgCellPlatform so the player can jump through
+		// from below and land on top. Tags remain for anti-stacking checks.
+		sgWritePlatformRect(grid, nx, y, stepW, 1)
 		if tags != nil && objectID > 0 {
 			tags.MarkRect(nx, y, stepW, 1, objectID, kind)
 		}
@@ -1633,40 +1707,16 @@ func sgCanPlaceSkyStep(grid [][]int, x, y, stepW int) bool {
 		return false
 	}
 
-	hasNonSolid := false
+	// At least one cell must be air or backwall (not solid and not another platform).
+	hasPlaceable := false
 	for xx := x; xx < x+stepW; xx++ {
-		if grid[y][xx] != sgCellSolid {
-			hasNonSolid = true
+		c := grid[y][xx]
+		if c != sgCellSolid && c != sgCellPlatform {
+			hasPlaceable = true
 			break
 		}
 	}
-	return hasNonSolid
-}
-
-func sgHasExternalSolidNearby(grid [][]int, x, y, w, h, radius int, ignore map[[2]int]bool) bool {
-	if len(grid) == 0 || len(grid[0]) == 0 {
-		return false
-	}
-	gridW := len(grid[0])
-	gridH := len(grid)
-	for yy := y - radius; yy <= y+h-1+radius; yy++ {
-		if yy < 0 || yy >= gridH {
-			continue
-		}
-		for xx := x - radius; xx <= x+w-1+radius; xx++ {
-			if xx < 0 || xx >= gridW {
-				continue
-			}
-			if grid[yy][xx] != sgCellSolid {
-				continue
-			}
-			if ignore != nil && ignore[[2]int{xx, yy}] {
-				continue
-			}
-			return true
-		}
-	}
-	return false
+	return hasPlaceable
 }
 
 func sgWriteSolidRect(grid [][]int, x0, y0, w, h int) {
@@ -1683,6 +1733,143 @@ func sgWriteSolidRect(grid [][]int, x0, y0, w, h int) {
 	}
 }
 
+// sgWritePlatformRect fills a rect with sgCellPlatform (one-way passable from below).
+// Before writing each row it checks whether placing that row would seal an air
+// pocket above the platform that the player cannot escape from (no horizontal or
+// upward exit reachable via BFS). Trapped rows are silently skipped.
+func sgWritePlatformRect(grid [][]int, x0, y0, w, h int) {
+	gridH := len(grid)
+	if gridH == 0 {
+		return
+	}
+	gridW := len(grid[0])
+	for y := y0; y < y0+h; y++ {
+		if y < 0 || y >= gridH {
+			continue
+		}
+		// Air-pocket check: skip this platform row if it would trap the player.
+		if sgPlatformTrapsAirPocket(grid, x0, y, w) {
+			continue
+		}
+		for x := x0; x < x0+w; x++ {
+			if x < 0 || x >= gridW {
+				continue
+			}
+			grid[y][x] = sgCellPlatform
+		}
+	}
+}
+
+// sgPlatformTrapsAirPocket returns true when placing a one-way platform at
+// (x0, y, w, 1) would create an inescapable pocket directly above it.
+//
+// The pocket is "sealed" when a BFS starting from the cells just above the
+// platform (row y-1) cannot exit the platform's column range horizontally,
+// cannot reach open sky above (y < y-sgPlayerH*2), and explores fewer than
+// maxPocketNodes cells total (large spaces are always considered safe).
+//
+// The BFS treats row y as an impassable floor (the new platform) and all
+// sgCellSolid cells as walls.  Existing one-way platforms and air cells are
+// passable so the player can jump between stacked platforms.
+// sgPlatformTrapsAirPocket проверяет, не создаст ли платформа ловушку.
+// Теперь учитывается ширина игрока (sgPlayerW) и высота (sgPlayerH).
+func sgPlatformTrapsAirPocket(grid [][]int, x0, y, w int) bool {
+	if y <= sgPlayerH {
+		return false
+	}
+	gridH, gridW := len(grid), len(grid[0])
+
+	// Проверяем: может ли игрок вообще стоять на этой платформе хоть в одной позиции?
+	// Для этого нужно найти X, где под игроком (3 блока) есть эта платформа,
+	// а в пространстве 3x5 над ней нет Solid блоков.
+	startPosFound := false
+	queue := []sgPoint{}
+	visited := make(map[sgPoint]bool)
+
+	for tx := x0 - sgPlayerW + 1; tx <= x0+w-1; tx++ {
+		// Игрок стоит в tx..tx+sgPlayerW-1. Проверяем границы.
+		if tx < 1 || tx+sgPlayerW > gridW-1 {
+			continue
+		}
+		// Проверяем "голову" и "тело" (5 блоков вверх)
+		canFit := true
+		for py := 0; py < sgPlayerH; py++ {
+			for px := 0; px < sgPlayerW; px++ {
+				if grid[y-1-py][tx+px] == sgCellSolid {
+					canFit = false
+					break
+				}
+			}
+			if !canFit {
+				break
+			}
+		}
+		if canFit {
+			p := sgPoint{X: tx, Y: y - 1}
+			queue = append(queue, p)
+			visited[p] = true
+			startPosFound = true
+		}
+	}
+
+	// Если игроку негде даже встать на этой платформе (голова в потолке) - это ловушка
+	if !startPosFound {
+		return true
+	}
+
+	// BFS: Пытаемся вывести "толстого" игрока (3x5) из этой зоны
+	head := 0
+	for head < len(queue) {
+		curr := queue[head]
+		head++
+
+		// Условие успеха: если мы ушли достаточно далеко от платформы по горизонтали
+		// или поднялись достаточно высоко
+		if curr.X < x0-sgPlayerW || curr.X > x0+w || curr.Y < y-sgPlayerH-2 {
+			return false
+		}
+
+		// Проверяем 4 направления для "тела" игрока
+		for _, d := range [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+			nx, ny := curr.X+d[0], curr.Y+d[1]
+			np := sgPoint{X: nx, Y: ny}
+
+			if ny < sgPlayerH || ny >= gridH-1 || nx < 1 || nx+sgPlayerW > gridW-1 || visited[np] {
+				continue
+			}
+
+			// Проверка коллизии тела 3x5 в новой точке
+			collision := false
+			for py := 0; py < sgPlayerH; py++ {
+				for px := 0; px < sgPlayerW; px++ {
+					if grid[ny-py][nx+px] == sgCellSolid {
+						collision = true
+						break
+					}
+				}
+				if collision {
+					break
+				}
+			}
+
+			// Новая платформа для нас - тоже пол (нельзя сквозь неё падать в рамках проверки кармана)
+			if ny == y {
+				collision = true
+			}
+
+			if !collision {
+				visited[np] = true
+				queue = append(queue, np)
+			}
+		}
+		if len(queue) > 200 {
+			return false
+		} // Слишком большое пространство - не ловушка
+	}
+
+	return true // Выхода для тела 3x5 не найдено
+}
+
 func sgPlaceHubs(rng *rand.Rand, grid [][]int, splitY int, cfg ProcGenConfig) []sgHub {
 	gridW := len(grid[0])
 	gridH := len(grid)
@@ -1691,8 +1878,8 @@ func sgPlaceHubs(rng *rand.Rand, grid [][]int, splitY int, cfg ProcGenConfig) []
 	// Boss rooms (sgPlaceBossRooms) provide the truly large boss-scale spaces.
 	hubMinW := max(14, sgScaleX(22, cfg))
 	hubMaxW := max(hubMinW+4, sgScaleX(38, cfg))
-	hubMinH := max(9, sgScaleY(14, cfg))
-	hubMaxH := max(hubMinH+4, sgScaleY(22, cfg))
+	hubMinH := max(7, sgScaleY(10, cfg)) // -15% again from max(8,12)
+	hubMaxH := max(hubMinH+3, sgScaleY(17, cfg))
 	minGap := sgMinHubGap(cfg)
 
 	// Вычисляем масштаб площади, чтобы понять, сколько комнат нужно сгенерировать
@@ -1849,6 +2036,8 @@ func sgCarveInletShaft(grid [][]int, inlet sgInlet, bottomY int) sgShaft {
 		}
 	}
 
+	sgApplyEntranceFlare(grid, inlet.CenterX, inlet.Y, inlet.Width)
+
 	return sgShaft{
 		CenterX: inlet.CenterX,
 		Left:    left,
@@ -1860,8 +2049,8 @@ func sgCarveInletShaft(grid [][]int, inlet sgInlet, bottomY int) sgShaft {
 
 func sgAddInletZigZagPlatforms(grid [][]int, shaft sgShaft, cfg ProcGenConfig, tags *sgSkyTagGrid) {
 	// step must be > sgPlayerH so there are exactly sgPlayerH rows of air between
-	// consecutive platforms — enough for the player (5 blocks tall) to stand.
-	step := sgPlayerH + 1 // = 6
+	// consecutive platforms — enough for the player to stand.
+	step := sgPlayerH + 1
 	ledgeW := max(sgPlayerW, sgScaleX(3, cfg))
 	sideGap := max(1, sgScaleX(3, cfg))
 	shaftW := shaft.Right - shaft.Left + 1
@@ -1893,13 +2082,13 @@ func sgAddInletZigZagPlatforms(grid [][]int, shaft sgShaft, cfg ProcGenConfig, t
 				continue
 			}
 			if sgIsPassable(grid[y][x]) {
-				grid[y][x] = sgCellSolid
+				grid[y][x] = sgCellPlatform // one-way: passable from below
 				if tags != nil && objectID > 0 {
 					tags.MarkCell(x, y, objectID, sgSkyObjectShaftStep)
 				}
 			}
 			// Guarantee sgPlayerH rows of headroom above the platform so the
-			// player (5 blocks tall) can stand here. Clear any solid that was
+			// player can stand here. Clear any solid that was
 			// placed by other passes (e.g. sgAddInternalLedges).
 			for pDy := 1; pDy <= sgPlayerH; pDy++ {
 				hy := y - pDy
@@ -1912,7 +2101,9 @@ func sgAddInletZigZagPlatforms(grid [][]int, shaft sgShaft, cfg ProcGenConfig, t
 	}
 }
 
-func sgAddReturnLoops(rng *rand.Rand, grid [][]int, splitY int, inlets []sgInlet, hubs []sgHub, carveRadius int, cfg ProcGenConfig, tags *sgSkyTagGrid) {
+// sgAddReturnLoops returns the set of surface X positions it used so the caller
+// can pass them to sgAddExitTunnels, preventing shaft overlap.
+func sgAddReturnLoops(rng *rand.Rand, grid [][]int, splitY int, inlets []sgInlet, hubs []sgHub, carveRadius int, cfg ProcGenConfig, tags *sgSkyTagGrid) map[int]bool {
 	count := max(2, len(hubs)/4)
 	deep := sgDeepestHubIndices(hubs, count)
 	exitW := max(4, sgScaleX(6, cfg))
@@ -1945,9 +2136,14 @@ func sgAddReturnLoops(rng *rand.Rand, grid [][]int, splitY int, inlets []sgInlet
 		}
 		sgAddInletZigZagPlatforms(grid, exitShaft, cfg, tags)
 	}
+	return usedTargets
 }
 
-func sgAddExitTunnels(rng *rand.Rand, grid [][]int, splitY int, cfg ProcGenConfig, inlets []sgInlet, tags *sgSkyTagGrid) {
+// sgAddExitTunnels creates additional surface-to-underground shafts with zigzag
+// platforms. Each shaft bottom is connected via a Bezier tunnel to the nearest
+// hub so the shaft is never an isolated dead-end. preUsed is the set of X
+// positions already occupied by return loop shafts — prevents overlap.
+func sgAddExitTunnels(rng *rand.Rand, grid [][]int, splitY int, cfg ProcGenConfig, inlets []sgInlet, tags *sgSkyTagGrid, preUsed map[int]bool) {
 	gridW := len(grid[0])
 	gridH := len(grid)
 
@@ -1956,13 +2152,17 @@ func sgAddExitTunnels(rng *rand.Rand, grid [][]int, splitY int, cfg ProcGenConfi
 	if shaftW%2 != 0 {
 		shaftW++
 	}
-	stepY := sgPlayerH + 1 // = 6: gap of sgPlayerH air rows between platforms
+	stepY := sgPlayerH + 1 // gap of sgPlayerH air rows between platforms
 	stepW := max(sgPlayerW, sgScaleX(4, cfg))
 	if stepW >= shaftW {
 		stepW = max(2, shaftW-2)
 	}
 
+	// Seed used map with all return-loop shaft positions so we never overlap them.
 	used := map[int]bool{}
+	for x := range preUsed {
+		used[x] = true
+	}
 	for i := 0; i < shaftCount; i++ {
 		centerX, ok := sgPickGroundExitX(rng, gridW, shaftW, inlets, used)
 		if !ok {
@@ -1975,6 +2175,13 @@ func sgAddExitTunnels(rng *rand.Rand, grid [][]int, splitY int, cfg ProcGenConfi
 
 		for y := max(0, splitY-1); y <= bottomY; y++ {
 			for x := left; x <= right; x++ {
+				// Also clear any existing platforms left by an earlier pass (e.g.
+				// a return-loop shaft that happened to be carved in the same column
+				// before the used-map exclusion was introduced). Without this, the
+				// column could end up with two independent sets of zigzag steps.
+				if grid[y][x] == sgCellPlatform {
+					grid[y][x] = sgCellAir
+				}
 				sgCarveCell(grid, x, y)
 				if y < splitY {
 					grid[y][x] = sgCellAir
@@ -1996,6 +2203,82 @@ func sgAddExitTunnels(rng *rand.Rand, grid [][]int, splitY int, cfg ProcGenConfi
 			sgPlaceShaftStep(grid, left, right, y, stepW, sideLeft, tags, objectID)
 			sideLeft = !sideLeft
 		}
+
+		// Connect the shaft to the nearest existing air pocket by scanning
+		// horizontally outward at several depths. We carve a short straight
+		// horizontal corridor rather than a diagonal tunnel — keeps the geometry
+		// clean and avoids cutting through solid walls at odd angles.
+		sgConnectShaftToNearestVoid(grid, left, right, splitY, bottomY)
+	}
+}
+
+// sgConnectShaftToNearestVoid scans horizontally outward from the shaft at
+// several underground depths and carves a straight horizontal corridor to the
+// nearest passable cell that is already reachable from the surface. Checking
+// reachability prevents connecting to isolated pockets that themselves have no
+// exit — only cells that a player could already reach before the tunnel is dug
+// are eligible targets.
+func sgConnectShaftToNearestVoid(grid [][]int, shaftLeft, shaftRight, splitY, shaftBottom int) {
+	gridW := len(grid[0])
+	gridH := len(grid)
+	maxReach := gridW / 3 // don't search the whole map
+
+	// Build a reachability map from the surface so we can filter candidates.
+	canReach := make([][]bool, gridH)
+	for i := range canReach {
+		canReach[i] = make([]bool, gridW)
+	}
+	sgMarkReachable(grid, canReach, splitY)
+
+	// Try a few Y levels spread across the shaft depth (skip the very top and bottom).
+	totalDepth := shaftBottom - splitY
+	scanYs := []int{
+		splitY + totalDepth*2/5,
+		splitY + totalDepth*3/5,
+		splitY + totalDepth*4/5,
+	}
+
+	connected := false
+	for _, scanY := range scanYs {
+		if scanY < splitY+2 || scanY >= gridH-1 {
+			continue
+		}
+		// Scan left — accept first passable cell that is surface-reachable.
+		for dx := 1; dx <= maxReach; dx++ {
+			nx := shaftLeft - dx
+			if nx < 1 {
+				break
+			}
+			if sgIsPassable(grid[scanY][nx]) && canReach[scanY][nx] {
+				// Found a reachable void — carve corridor from shaft edge to here.
+				for cx := nx; cx < shaftLeft; cx++ {
+					if grid[scanY][cx] == sgCellSolid {
+						grid[scanY][cx] = sgCellBackwall
+					}
+				}
+				connected = true
+				break
+			}
+		}
+		// Scan right.
+		for dx := 1; dx <= maxReach; dx++ {
+			nx := shaftRight + dx
+			if nx >= gridW-1 {
+				break
+			}
+			if sgIsPassable(grid[scanY][nx]) && canReach[scanY][nx] {
+				for cx := shaftRight + 1; cx <= nx; cx++ {
+					if grid[scanY][cx] == sgCellSolid {
+						grid[scanY][cx] = sgCellBackwall
+					}
+				}
+				connected = true
+				break
+			}
+		}
+		if connected {
+			break
+		}
 	}
 }
 
@@ -2011,11 +2294,11 @@ func sgPlaceShaftStep(grid [][]int, left, right, y, stepW int, sideLeft bool, ta
 		if nx < 0 || nx >= gridW || y < 0 || y >= gridH {
 			continue
 		}
-		grid[y][nx] = sgCellSolid
+		grid[y][nx] = sgCellPlatform // one-way: passable from below
 		if tags != nil && objID > 0 {
 			tags.MarkCell(nx, y, objID, sgSkyObjectShaftStep)
 		}
-		// Clear sgPlayerH rows above so the player (5 blocks tall) can stand.
+		// Clear sgPlayerH rows above so the player can stand.
 		for pDy := 1; pDy <= sgPlayerH; pDy++ {
 			hy := y - pDy
 			if hy >= 0 && grid[hy][nx] == sgCellSolid {
@@ -2121,12 +2404,11 @@ func sgRunUpwardWalker(rng *rand.Rand, grid [][]int, start sgPoint, targetX, spl
 }
 
 func sgOpenSurfaceExit(grid [][]int, centerX int, splitY int, width int) {
-	gridW := len(grid[0])
 	gridH := len(grid)
 	left := centerX - width/2
 	right := left + width - 1
-	left = sgClamp(left, 1, gridW-2)
-	right = sgClamp(right, 1, gridW-2)
+
+	// Прорезаем стандартный прямоугольник
 	for y := splitY - 1; y <= splitY+2; y++ {
 		if y < 0 || y >= gridH {
 			continue
@@ -2136,6 +2418,37 @@ func sgOpenSurfaceExit(grid [][]int, centerX int, splitY int, width int) {
 			if y < splitY {
 				grid[y][x] = sgCellAir
 			}
+		}
+	}
+
+	// Применяем закругление
+	sgApplyEntranceFlare(grid, centerX, splitY, width)
+}
+
+// sgApplyEntranceFlare делает воронкообразное расширение у выхода на поверхность.
+func sgApplyEntranceFlare(grid [][]int, centerX int, splitY int, width int) {
+	gridW := len(grid[0])
+	left := centerX - width/2
+	right := left + width - 1
+
+	// Радиус закругления (на сколько блоков расширяем в стороны)
+	flare := 2
+
+	// 1. Уровень splitY (поверхность): самое широкое место
+	for x := left - flare; x <= right+flare; x++ {
+		if x >= 1 && x < gridW-1 {
+			sgCarveCell(grid, x, splitY)
+			// Над входом гарантированно должен быть воздух
+			if splitY > 0 {
+				grid[splitY-1][x] = sgCellAir
+			}
+		}
+	}
+
+	// 2. Уровень splitY + 1 (чуть глубже): среднее расширение
+	for x := left - 1; x <= right+1; x++ {
+		if x >= 1 && x < gridW-1 {
+			sgCarveCell(grid, x, splitY+1)
 		}
 	}
 }
@@ -2253,43 +2566,54 @@ func sgCarveCell(grid [][]int, x, y int) {
 	}
 }
 
-// ─── Boss Rooms ───────────────────────────────────────────────────────────────
-
-// sgCarveEllipseRoom carves a dome-shaped underground room centered at (cx, cy).
-// cy is the floor row (stays solid). The dome extends ry rows upward.
-// rx is the half-width. Only solid cells are carved — existing passable cells
-// are untouched, so the room never damages pre-existing structures.
-func sgCarveEllipseRoom(grid [][]int, cx, cy, rx, ry int) {
-	const bottomGuard = 4
+// sgCarveRectRoom carves a rectangular underground room centered at (cx, cy).
+// cy is the floor row (stays solid). The room extends ry rows upward from cy.
+// rx is the half-width. The function guarantees room integrity:
+//
+//	Step 1: stamps a solid border (2-cell side walls, ceiling, floor rows) even
+//	        over previously-carved cells — so adjacent carved regions never
+//	        dissolve the room walls.
+//	Step 2: carves the interior, preserving the stamped border.
+func sgCarveRectRoom(grid [][]int, cx, cy, rx, ry int) {
+	const bottomGuard = 8
 	gridH, gridW := len(grid), len(grid[0])
 
-	// Dome: upper half-ellipse from cy-ry to cy-1.
-	for y := cy - ry; y < cy; y++ {
+	x0, x1 := cx-rx, cx+rx
+	y0, y1 := cy-ry, cy // y1 = floor row (solid, not carved)
+
+	// Step 1: Stamp solid border so walls always exist.
+	for y := y0 - 1; y <= y1; y++ {
 		if y < 1 || y >= gridH-bottomGuard {
 			continue
 		}
-		dy := float64(y - cy) // negative
-		halfW := int(math.Round(float64(rx) * math.Sqrt(1.0-dy/float64(-ry)*dy/float64(-ry))))
-		for x := cx - halfW; x <= cx+halfW; x++ {
+		for x := x0 - 1; x <= x1+1; x++ {
+			if x < 1 || x >= gridW-1 {
+				continue
+			}
+			isSideWall := x < x0+2 || x > x1-2
+			isCeilingOrFloor := y < y0 || y >= y1
+			if isSideWall || isCeilingOrFloor {
+				grid[y][x] = sgCellSolid
+			}
+		}
+	}
+
+	// Step 2: Carve interior only (skip 2-cell side walls, ceiling, floor).
+	for y := y0; y < y1; y++ {
+		if y < 1 || y >= gridH-bottomGuard {
+			continue
+		}
+		for x := x0 + 2; x <= x1-2; x++ {
 			if x >= 1 && x < gridW-1 {
 				sgCarveCell(grid, x, y)
 			}
 		}
 	}
-
-	// Flat floor: carve the full-width row just above the floor.
-	// The floor row (cy) and anything in the bottom guard remain solid.
-	if cy-1 >= 1 && cy-1 < gridH-bottomGuard {
-		for x := cx - rx; x <= cx+rx; x++ {
-			if x >= 1 && x < gridW-1 {
-				sgCarveCell(grid, x, cy-1)
-			}
-		}
-	}
 }
 
-// sgBossRoomSolidRatio returns the fraction of proposed room cells that are
-// still solid (not yet carved). A high ratio means "mostly untouched earth".
+// sgBossRoomSolidRatio returns the fraction of proposed rectangular room cells
+// that are still solid (not yet carved). A high ratio means "mostly untouched
+// earth" and signals a good placement site.
 func sgBossRoomSolidRatio(grid [][]int, cx, cy, rx, ry int) float64 {
 	gridH, gridW := len(grid), len(grid[0])
 	total, solid := 0, 0
@@ -2297,9 +2621,7 @@ func sgBossRoomSolidRatio(grid [][]int, cx, cy, rx, ry int) float64 {
 		if y < 0 || y >= gridH {
 			return 0
 		}
-		dy := float64(y - cy)
-		halfW := int(math.Round(float64(rx) * math.Sqrt(1.0-dy/float64(-ry)*dy/float64(-ry))))
-		for x := cx - halfW; x <= cx+halfW; x++ {
+		for x := cx - rx; x <= cx+rx; x++ {
 			if x < 0 || x >= gridW {
 				return 0 // touches boundary → reject
 			}
@@ -2315,29 +2637,355 @@ func sgBossRoomSolidRatio(grid [][]int, cx, cy, rx, ry int) float64 {
 	return float64(solid) / float64(total)
 }
 
+// sgMaxBossLevelForZone returns the maximum boss power level for a given ring zone.
+// Level 1 = mini boss, 2 = boss, 3 = super boss.
+// Power levels 4 and 5 represent paired encounters (see sgRoomLevelToBossSpawns).
+func sgMaxBossLevelForZone(zone shared.RingZone) int {
+	switch zone {
+	case shared.RingZoneGreen:
+		return 2
+	case shared.RingZoneRed:
+		return 4
+	case shared.RingZoneBlack, shared.RingZoneThrone:
+		return 5
+	default:
+		return 2
+	}
+}
+
+// sgRoomBossLevel returns the power level for a room at depth cy.
+// Deep rooms (bottom 40%) get maxLevel; shallower rooms get maxLevel-1 (min 1).
+func sgRoomBossLevel(cy, splitY, gridH, maxLevel int) int {
+	deepLo := splitY + (gridH-splitY)*6/10
+	if cy >= deepLo {
+		return maxLevel
+	}
+	return max(1, maxLevel-1)
+}
+
+// sgRoomFloorOK returns true if at least 60% of the floor row (cy) within the
+// room's interior is solid. Used to decide whether to place a ground boss.
+func sgRoomFloorOK(grid [][]int, cx, cy, rx int) bool {
+	gridW := len(grid[0])
+	gridH := len(grid)
+	if cy < 0 || cy >= gridH {
+		return false
+	}
+	interior := 0
+	solid := 0
+	for x := cx - rx + 2; x <= cx+rx-2; x++ {
+		if x < 0 || x >= gridW {
+			continue
+		}
+		interior++
+		if grid[cy][x] == sgCellSolid {
+			solid++
+		}
+	}
+	if interior == 0 {
+		return false
+	}
+	return float64(solid)/float64(interior) >= 0.6
+}
+
+// sgRoomLevelToBossSpawns converts a room power level to a list of boss spawns
+// placed symmetrically at block position (cx, floorRow) in pixel coordinates.
+//
+//	level 1 → 1 mini boss (level 1)
+//	level 2 → 1 boss      (level 2)
+//	level 3 → 1 super boss (level 3)
+//	level 4 → super boss + mini boss
+//	level 5 → super boss + boss
+func sgRoomLevelToBossSpawns(powerLevel, cx, floorRow, blockSize int) []shared.BossSpawn {
+	px := float64(cx * blockSize)
+	py := float64(floorRow * blockSize)
+	side := float64(blockSize) // one block offset for paired spawns
+	switch powerLevel {
+	case 1:
+		return []shared.BossSpawn{{X: px, Y: py, Level: 1}}
+	case 2:
+		return []shared.BossSpawn{{X: px, Y: py, Level: 2}}
+	case 3:
+		return []shared.BossSpawn{{X: px, Y: py, Level: 3}}
+	case 4:
+		return []shared.BossSpawn{
+			{X: px - side, Y: py, Level: 3},
+			{X: px + side, Y: py, Level: 1},
+		}
+	default: // 5+
+		return []shared.BossSpawn{
+			{X: px - side, Y: py, Level: 3},
+			{X: px + side, Y: py, Level: 2},
+		}
+	}
+}
+
+// sgAddFloorBridgePlatforms adds stepping-stone platforms across a floor gap so
+// the player can hop across. Count and width scale with room half-width rx:
+//
+//	rx < 8  → 2 platforms, 2 cells wide each
+//	rx < 14 → 3 platforms, 2-3 cells wide
+//	rx >= 14 → 4 platforms, 3 cells wide
+//
+// Platforms are staggered vertically (alternating 2 and 3 rows above floor) to
+// avoid a flat row of platforms at a single height.
+func sgAddFloorBridgePlatforms(grid [][]int, cx, cy, rx int) {
+	gridW := len(grid[0])
+	gridH := len(grid)
+	if cy < 4 {
+		return
+	}
+
+	// Determine count and individual width from room size.
+	count := 2
+	platW := 2
+	if rx >= 14 {
+		count = 4
+		platW = 3
+	} else if rx >= 8 {
+		count = 3
+		platW = 2
+	}
+
+	// Distribute platforms evenly across [-rx*2/3 .. rx*2/3] relative to cx.
+	span := rx * 4 / 3
+	if count == 1 {
+		span = 0
+	}
+	for i := 0; i < count; i++ {
+		var offsetX int
+		if count > 1 {
+			offsetX = -span/2 + i*span/(count-1)
+		}
+		// Alternate height: even index → 3 above floor, odd → 2 above floor.
+		aboveFloor := 3
+		if i%2 == 1 {
+			aboveFloor = 2
+		}
+		py := cy - aboveFloor
+		px := cx + offsetX - platW/2
+
+		for dx := 0; dx < platW; dx++ {
+			x := px + dx
+			if x < 1 || x >= gridW-1 || py < 1 || py >= gridH-1 {
+				continue
+			}
+			if grid[py][x] == sgCellAir || grid[py][x] == sgCellBackwall {
+				grid[py][x] = sgCellPlatform
+			}
+		}
+	}
+}
+
+// sgBuildBossSpawnList assembles all boss spawn markers for the room:
+//   - Underground boss rooms (bossRooms) get maxLevel or maxLevel-1 based on depth.
+//   - Underground mini boss rooms (miniBossRooms) get one power level below their
+//     adjacent boss room.
+//   - Sky hubs (skyHubs, sorted bottom→top) scale from level 1 to maxLevel.
+//
+// All positions are converted to pixels using blockSize.
+// sgBuildRiftZones collects pixel-space rectangles where a rift is allowed to
+// materialise. Two categories of zone are produced:
+//
+//  1. Sky platforms (sgCellPlatform, y < splitY): each contiguous horizontal run
+//     of platform cells becomes one zone. The rift sits on top of the platform.
+//
+//  2. Underground tunnel mouths at near-ground depth (splitY < y < splitY+8):
+//     horizontal runs of passable floor cells that are NOT inside boss or
+//     mini-boss rooms. These represent the widest flat sections at the entrance
+//     to underground tunnels — exactly where players are most exposed.
+func sgBuildRiftZones(grid [][]int, tags *sgSkyTagGrid, bossRooms, miniBossRooms [][4]int, splitY, blockSize int) []shared.Rect {
+	gridH := len(grid)
+	var allZones []shared.Rect
+
+	// 1. Собираем площадки в небе (выше поверхности)
+	// Начинаем с y=5, чтобы не спавнить у самого потолка карты
+	skyZones := sgFindRiftSurfaces(grid, 5, splitY-1, bossRooms, miniBossRooms, blockSize)
+	allZones = append(allZones, skyZones...)
+
+	// 2. Собираем площадки под землей (включая туннели и шахты)
+	// gridH-4 — чтобы не спавнить в самом низу, где пол карты
+	undergroundZones := sgFindRiftSurfaces(grid, splitY+1, gridH-4, bossRooms, miniBossRooms, blockSize)
+	allZones = append(allZones, undergroundZones...)
+
+	return allZones
+}
+
+// sgFindRiftSurfaces — это чистая функция, которая ищет горизонтальные площадки
+// для рифтов, учитывая наличие пола (Solid/Platform) и свободного места сверху.
+func sgFindRiftSurfaces(grid [][]int, yMin, yMax int, bossRooms, miniBossRooms [][4]int, blockSize int) []shared.Rect {
+	gridW := len(grid[0])
+	gridH := len(grid)
+	var zones []shared.Rect
+
+	const riftWidthBlocks = 4
+	const riftHeightBlocks = 5
+
+	// Локальная проверка: не находимся ли мы внутри или слишком близко к комнате босса
+	inBossArea := func(x, y int) bool {
+		for _, r := range append(bossRooms, miniBossRooms...) {
+			// [0]=cx, [1]=cy, [2]=rx, [3]=ry
+			cx, cy, rx, ry := r[0], r[1], r[2], r[3]
+			if x >= cx-rx-1 && x <= cx+rx+1 && y >= cy-ry-1 && y <= cy+1 {
+				return true
+			}
+		}
+		return false
+	}
+
+	for y := yMin; y <= yMax && y < gridH-1; y++ {
+		runStart := -1
+		for x := 0; x < gridW; x++ {
+			// 1. Проверяем пол (теперь учитываем и обычные блоки, и платформы-ступеньки)
+			hasFloor := grid[y+1][x] == sgCellSolid || grid[y+1][x] == sgCellPlatform
+
+			// 2. Проверяем место для "тушки" рифта (3 блока воздуха вверх)
+			hasHeadroom := true
+			for h := 0; h < riftHeightBlocks; h++ {
+				checkY := y - h
+				if checkY < 0 || grid[checkY][x] == sgCellSolid {
+					hasHeadroom = false
+					break
+				}
+			}
+
+			if hasFloor && hasHeadroom && !inBossArea(x, y) {
+				if runStart < 0 {
+					runStart = x
+				}
+			} else {
+				if runStart >= 0 {
+					runLen := x - runStart
+					if runLen >= riftWidthBlocks {
+						zones = append(zones, shared.Rect{
+							X: float64(runStart * blockSize),
+							Y: float64((y - 1) * blockSize),
+							W: float64(runLen * blockSize),
+							H: float64(2 * blockSize),
+						})
+					}
+					runStart = -1
+				}
+			}
+		}
+	}
+	return zones
+}
+
+func sgBuildBossSpawnList(
+	grid [][]int,
+	bossRooms, miniBossRooms [][4]int,
+	skyHubs []sgSkyHub,
+	splitY, gridH, maxLevel, blockSize int,
+) []shared.BossSpawn {
+	var spawns []shared.BossSpawn
+
+	// Underground boss rooms.
+	for _, r := range bossRooms {
+		cx, cy, rx, ry := r[0], r[1], r[2], r[3]
+		_ = ry
+		level := sgRoomBossLevel(cy, splitY, gridH, maxLevel)
+		if sgRoomFloorOK(grid, cx, cy, rx) {
+			spawns = append(spawns, sgRoomLevelToBossSpawns(level, cx, cy-1, blockSize)...)
+		} else {
+			// Floor has gaps — flying boss in room center, add bridge platforms.
+			sgAddFloorBridgePlatforms(grid, cx, cy, rx)
+			midY := cy - ry/2
+			spawns = append(spawns, shared.BossSpawn{
+				X:      float64(cx * blockSize),
+				Y:      float64(midY * blockSize),
+				Level:  min(level, 3),
+				Flying: true,
+			})
+		}
+	}
+
+	// Underground mini boss rooms: one power level below the associated boss room.
+	// Mini rooms are adjacent to boss rooms and share the same depth zone, so
+	// we compute their power level the same way but subtract 1.
+	// Always place a mini-boss here — mini-boss rooms are specially carved for
+	// this purpose. If the floor is damaged (e.g. by the connecting tunnel),
+	// fall back to a flying spawn in the room centre.
+	for _, r := range miniBossRooms {
+		cx, cy, rx, ry := r[0], r[1], r[2], r[3]
+		bossLevel := sgRoomBossLevel(cy, splitY, gridH, maxLevel)
+		level := max(1, bossLevel-1)
+		if sgRoomFloorOK(grid, cx, cy, rx) {
+			spawns = append(spawns, sgRoomLevelToBossSpawns(level, cx, cy-1, blockSize)...)
+		} else {
+			// Floor damaged — place flying mini-boss at room centre.
+			midY := cy - max(1, ry/2)
+			spawns = append(spawns, shared.BossSpawn{
+				X:      float64(cx * blockSize),
+				Y:      float64(midY * blockSize),
+				Level:  min(level, 1), // mini-boss only in side room
+				Flying: true,
+			})
+		}
+	}
+
+	// Sky hubs: scale from level 1 (lowest hub, closest to ground) to maxLevel
+	// (highest hub, furthest from ground). Hubs are already stored top→bottom in
+	// Y-ascending order in sgSkyHub (lower Y = higher in the air).
+	if len(skyHubs) > 0 {
+		// Sort hubs by Y ascending (highest in sky = lowest Y = hardest).
+		sorted := make([]sgSkyHub, len(skyHubs))
+		copy(sorted, skyHubs)
+		for i := 1; i < len(sorted); i++ {
+			for j := i; j > 0 && sorted[j].Y < sorted[j-1].Y; j-- {
+				sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
+			}
+		}
+		n := len(sorted)
+		for k, hub := range sorted {
+			// k=0 is the highest hub (lowest Y) → maxLevel.
+			// k=n-1 is the lowest hub (highest Y) → level 1.
+			level := 1
+			if n > 1 {
+				level = 1 + (maxLevel-1)*(n-1-k)/(n-1)
+			} else {
+				level = maxLevel
+			}
+			level = max(1, min(level, maxLevel))
+			bx := hub.X + hub.W/2
+			by := hub.Y - 1 // one block above hub top face
+			if by < 0 {
+				by = 0
+			}
+			spawns = append(spawns, sgRoomLevelToBossSpawns(level, bx, by, blockSize)...)
+		}
+	}
+
+	return spawns
+}
+
 // sgPlaceMiniBossRooms carves small rectangular side rooms adjacent to placed
 // boss rooms. Each boss room has a random chance of spawning a mini room on its
 // left or right side. Mini rooms connect via a narrow tunnel through the boss
 // room wall and require a solid floor (no holes). Only solid earth is carved —
 // existing carved regions are never modified.
-func sgPlaceMiniBossRooms(rng *rand.Rand, grid [][]int, bossRooms [][4]int, splitY int) {
+// Returns [cx,cy,rx,ry] for each placed mini room so callers can place bosses.
+func sgPlaceMiniBossRooms(rng *rand.Rand, grid [][]int, bossRooms [][4]int, splitY int) [][4]int {
 	if len(bossRooms) == 0 {
-		return
+		return nil
 	}
 	gridH := len(grid)
 	gridW := len(grid[0])
-	const bottomGuard = 4
+	const bottomGuard = 8
 	const spawnChance = 60 // percent chance per boss room
+
+	var placed [][4]int
 
 	for _, r := range bossRooms {
 		cx, cy, rx, ry := r[0], r[1], r[2], r[3]
+		_ = ry
 		if rng.Intn(100) >= spawnChance {
 			continue
 		}
 
 		// Mini room dimensions: 30-50% of the boss room size.
 		mRx := max(4, rx*2/5+rng.Intn(max(1, rx/5)))
-		mRy := max(3, ry*2/5+rng.Intn(max(1, ry/5)))
+		mRy := max(3, r[3]*2/5+rng.Intn(max(1, r[3]/5)))
 
 		// Try left side, then right side.
 		for _, side := range []int{-1, 1} {
@@ -2389,8 +3037,8 @@ func sgPlaceMiniBossRooms(rng *rand.Rand, grid [][]int, bossRooms [][4]int, spli
 				continue
 			}
 
-			// Carve the mini room ellipse.
-			sgCarveEllipseRoom(grid, mCx, mCy, mRx, mRy)
+			// Carve the mini room rectangle (walls stamped first, then interior).
+			sgCarveRectRoom(grid, mCx, mCy, mRx, mRy)
 
 			// Carve a narrow horizontal connecting tunnel at mid-height of mini room.
 			tunnelY := mCy - mRy/2
@@ -2399,9 +3047,11 @@ func sgPlaceMiniBossRooms(rng *rand.Rand, grid [][]int, bossRooms [][4]int, spli
 				sgPoint{X: tunnelX2, Y: tunnelY},
 				1) // radius 1 = 3-cell-wide tunnel (just enough for player width)
 
+			placed = append(placed, [4]int{mCx, mCy, mRx, mRy})
 			break // one mini room per boss room
 		}
 	}
+	return placed
 }
 
 // sgPlaceBossRoomsNearShafts places large elliptical boss rooms in the densest
@@ -2426,9 +3076,9 @@ func sgPlaceBossRoomsNearShafts(rng *rand.Rand, grid [][]int, shafts []sgShaft, 
 
 	gridH := len(grid)
 	gridW := len(grid[0])
-	const bottomGuard = 4
+	const bottomGuard = 8
 	const solidThreshold = 0.80 // 80% solid required — avoids eating carved regions
-	const tunnelRadius = 2      // half-width of horizontal entry tunnels
+	const tunnelRadius = 1      // half-width of horizontal entry tunnels (radius=1 → 3-cell wide)
 
 	// Room height range (scaled to map size).
 	ryMax := max(12, sgScaleY(16, cfg))
@@ -2462,7 +3112,7 @@ func sgPlaceBossRoomsNearShafts(rng *rand.Rand, grid [][]int, shafts []sgShaft, 
 	tooClose := func(cx, cy, rx int) bool {
 		for _, r := range placed {
 			dx, dy := cx-r.cx, cy-r.cy
-			if dx*dx+dy*dy < (r.rx+rx+8)*(r.rx+rx+8) {
+			if dx*dx+dy*dy < (r.rx+rx+14)*(r.rx+rx+14) {
 				return true
 			}
 		}
@@ -2591,10 +3241,10 @@ func sgPlaceBossRoomsNearShafts(rng *rand.Rand, grid [][]int, shafts []sgShaft, 
 					continue
 				}
 
-				sgCarveEllipseRoom(grid, cx, bestCy, rx, ry)
+				sgCarveRectRoom(grid, cx, bestCy, rx, ry)
 				placed = append(placed, roomRec{cx, bestCy, rx, ry})
 
-				tunnelY := bestCy - ry/3
+				tunnelY := bestCy - ry/2
 				if leftShaft != nil {
 					connectShaftToRoom(leftShaft, tunnelY, cx-rx)
 				}
@@ -2672,7 +3322,7 @@ func sgPlaceBossRoomsNearShafts(rng *rand.Rand, grid [][]int, shafts []sgShaft, 
 			if dx > r.rx+maxHorizReach {
 				continue // too far away
 			}
-			tunnelY := r.cy - r.ry/3
+			tunnelY := r.cy - r.ry/2
 			// Connect shaft to the nearest room edge.
 			if s.CenterX < r.cx {
 				connectShaftToRoom(s, tunnelY, r.cx-r.rx)
@@ -2707,7 +3357,7 @@ func sgPlaceBossRoomsNearShafts(rng *rand.Rand, grid [][]int, shafts []sgShaft, 
 				}
 			}
 			// Connect to the side of that room.
-			tunnelY := nearestRoom.cy - nearestRoom.ry/3
+			tunnelY := nearestRoom.cy - nearestRoom.ry/2
 			if si.CenterX <= nearestRoom.cx {
 				connectShaftToRoom(si, tunnelY, nearestRoom.cx-nearestRoom.rx)
 			} else {
@@ -2775,40 +3425,6 @@ func sgCountUndergroundPassable(grid [][]int, splitY int) int {
 	return count
 }
 
-// sgFillUndergroundToTarget adds hub-to-hub Bezier tunnels until the
-// underground void fraction reaches targetPct (e.g. 0.50 = 50%).
-// Only Bezier tunnels are used: they are always reachable because they
-// start and end at hub centers which are part of the connected network.
-// Blobs are avoided because domed ceilings create unreachable floor cells.
-func sgFillUndergroundToTarget(rng *rand.Rand, grid [][]int, hubs []sgHub, splitY, carveRadius int, targetPct float64) {
-	if len(hubs) < 2 {
-		return
-	}
-	gridH, gridW := len(grid), len(grid[0])
-	underground := gridW * (gridH - splitY)
-	target := int(float64(underground) * targetPct)
-
-	const recountEvery = 5
-	maxPasses := 200
-	passable := sgCountUndergroundPassable(grid, splitY)
-
-	for pass := 0; pass < maxPasses; pass++ {
-		if pass%recountEvery == 0 {
-			passable = sgCountUndergroundPassable(grid, splitY)
-			if passable >= target {
-				break
-			}
-		}
-		// Wider-radius Bezier between two random hubs for more void per pass.
-		a := rng.Intn(len(hubs))
-		b := rng.Intn(len(hubs) - 1)
-		if b >= a {
-			b++
-		}
-		sgCarveBeziez(rng, grid, hubs[a].Center(), hubs[b].Center(), carveRadius+1)
-	}
-}
-
 func sgAddWallLedges(grid [][]int, splitY int, cfg ProcGenConfig) {
 	threshold := max(3, sgScaleY(6, cfg))
 	step := max(2, sgScaleY(5, cfg))
@@ -2840,7 +3456,7 @@ func sgAddWallLedges(grid [][]int, splitY int, cfg ProcGenConfig) {
 					continue
 				}
 				if sgIsPassable(grid[y][x]) {
-					grid[y][x] = sgCellSolid
+					grid[y][x] = sgCellPlatform // one-way wall ledge
 				}
 			}
 			sideLeft = !sideLeft
@@ -2897,8 +3513,8 @@ func sgWidestRowSegment(segments []sgRowSegment, minWidth int) (sgRowSegment, bo
 }
 
 func sgAddInternalLedges(rng *rand.Rand, grid [][]int, splitY int, cfg ProcGenConfig) {
-	const minHeight = 8  // don't add ledges in short spaces
-	const maxJumpH = 8   // max jump height (blocks)
+	const minHeight = 8 // don't add ledges in short spaces
+	const maxJumpH = 8  // max jump height (blocks)
 	ledgeMinW := max(sgPlayerW, sgScaleX(3, cfg))
 	ledgeMaxW := max(ledgeMinW, sgScaleX(5, cfg))
 
@@ -2936,6 +3552,36 @@ func sgAddInternalLedges(rng *rand.Rand, grid [][]int, splitY int, cfg ProcGenCo
 			}
 			biasX = sgClamp(biasX, comp.MinX, comp.MaxX-w+1)
 
+			// Component-wide headroom check: if any row in [nextY-sgPlayerH, nextY-1]
+			// contains a platform or solid across the FULL component width, another
+			// ledge/step already owns that zone. Skip this Y regardless of which side
+			// the new ledge would go on — this is what prevents sgAddInternalLedges
+			// from inserting a platform between two zigzag staircase steps that sit on
+			// opposite sides of a narrow shaft (the per-ledge headroom check in
+			// sgIsLedgeReachable only covers the ledge's own columns and misses the
+			// other side).
+			componentHeadroomBlocked := false
+			for dy := 1; dy <= sgPlayerH; dy++ {
+				checkY := nextY - dy
+				if checkY < 0 {
+					componentHeadroomBlocked = true
+					break
+				}
+				for cx := comp.MinX; cx <= comp.MaxX; cx++ {
+					c := grid[checkY][cx]
+					if c == sgCellPlatform || c == sgCellSolid {
+						componentHeadroomBlocked = true
+						break
+					}
+				}
+				if componentHeadroomBlocked {
+					break
+				}
+			}
+			if componentHeadroomBlocked {
+				break
+			}
+
 			x0, ok := sgPickLedgeXBiased(rng, grid, comp, nextY, w, biasX)
 			if !ok {
 				// Try random position as fallback.
@@ -2952,7 +3598,7 @@ func sgAddInternalLedges(rng *rand.Rand, grid [][]int, splitY int, cfg ProcGenCo
 			for dx := 0; dx < w; dx++ {
 				x := x0 + dx
 				if sgIsPassable(grid[nextY][x]) {
-					grid[nextY][x] = sgCellSolid
+					grid[nextY][x] = sgCellPlatform // one-way internal ledge
 				}
 			}
 
@@ -2974,14 +3620,20 @@ func sgIsLedgeReachable(grid [][]int, x0, y, w, compFloorY int) bool {
 
 	gridH, gridW := len(grid), len(grid[0])
 
-	// 1. Headroom: sgPlayerH rows above the ledge must be air.
+	// 1. Headroom: sgPlayerH rows above the ledge must be completely clear —
+	// no solid AND no one-way platform. A platform in the headroom zone means
+	// a player standing here would have another platform inside their body, and
+	// it is also an indicator that the spacing to the existing platform is too
+	// tight (< sgPlayerH rows). This is the guard that prevents sgAddInternalLedges
+	// from inserting a ledge inside the headroom of an existing shaft zigzag step.
 	for dy := 1; dy <= sgPlayerH; dy++ {
 		checkY := y - dy
 		if checkY < 0 {
 			return false
 		}
 		for cx := x0; cx < x0+w && cx < gridW; cx++ {
-			if grid[checkY][cx] == sgCellSolid {
+			c := grid[checkY][cx]
+			if c == sgCellSolid || c == sgCellPlatform {
 				return false
 			}
 		}
@@ -2992,19 +3644,28 @@ func sgIsLedgeReachable(grid [][]int, x0, y, w, compFloorY int) bool {
 		return true
 	}
 
-	// 2b. A previously-placed solid stepping-stone within jump range.
+	// 2b. A previously-placed stepping-stone (solid or one-way platform) within
+	// jump range below the proposed ledge. Platforms count because the player can
+	// land on them and jump from them just like from solid ground.
 	for searchY := y + 1; searchY <= min(y+maxJumpH, gridH-1); searchY++ {
 		xLo := max(0, x0-maxJumpW)
 		xHi := min(gridW-1, x0+w-1+maxJumpW)
 		for searchX := xLo; searchX <= xHi; searchX++ {
-			if grid[searchY][searchX] != sgCellSolid {
+			c := grid[searchY][searchX]
+			if c != sgCellSolid && c != sgCellPlatform {
 				continue
 			}
-			// The stepping-stone must have sgPlayerH standing room above it.
+			// The stepping-stone must have sgPlayerH standing room above it
+			// (clear of both solids and platforms).
 			canStand := true
 			for dy := 1; dy <= sgPlayerH; dy++ {
 				standY := searchY - dy
-				if standY < 0 || grid[standY][searchX] == sgCellSolid {
+				if standY < 0 {
+					canStand = false
+					break
+				}
+				sc := grid[standY][searchX]
+				if sc == sgCellSolid || sc == sgCellPlatform {
 					canStand = false
 					break
 				}
@@ -3067,7 +3728,7 @@ func sgFinalizeHubAccessibility(grid [][]int, hubs []sgHub, tags *sgSkyTagGrid, 
 	platW := max(sgPlayerW, sgScaleX(3, cfg))
 
 	for _, h := range hubs {
-		// 1. СКАНИРУЕМ ПОТОЛОК на наличие шахт
+		// СКАНИРУЕМ ПОТОЛОК на наличие шахт
 		ceilingExits := []int{}
 		for x := h.X + 1; x < h.X+h.W-1; x++ {
 			if h.Y > 0 && sgIsPassable(grid[h.Y-1][x]) {
@@ -3078,7 +3739,7 @@ func sgFinalizeHubAccessibility(grid [][]int, hubs []sgHub, tags *sgSkyTagGrid, 
 			}
 		}
 
-		// 2. СКАНИРУЕМ СТЕНЫ на наличие боковых туннелей
+		// СКАНИРУЕМ СТЕНЫ на наличие боковых туннелей
 		sideExits := []int{}
 		for y := h.Y + 1; y < h.Y+h.H-2; y++ {
 			// Проверяем левую и правую стену
@@ -3092,7 +3753,7 @@ func sgFinalizeHubAccessibility(grid [][]int, hubs []sgHub, tags *sgSkyTagGrid, 
 		// Hub floor row for reachability check.
 		hubFloorY := h.Y + h.H
 
-		// 3. СТРОИМ ЛЕСТНИЦЫ К ШАХТАМ В ПОТОЛКЕ (снизу вверх — каждая опирается на предыдущую)
+		// СТРОИМ ЛЕСТНИЦЫ К ШАХТАМ В ПОТОЛКЕ (снизу вверх — каждая опирается на предыдущую)
 		for _, exitX := range ceilingExits {
 			side := 1
 			for py := h.Y + h.H - stepY; py >= h.Y+stepY; py -= stepY {
@@ -3106,7 +3767,7 @@ func sgFinalizeHubAccessibility(grid [][]int, hubs []sgHub, tags *sgSkyTagGrid, 
 			}
 		}
 
-		// 4. СТРОИМ ПОДЪЕМЫ К ВЫСОКИМ БОКОВЫМ ТУННЕЛЯМ (снизу вверх)
+		// СТРОИМ ПОДЪЕМЫ К ВЫСОКИМ БОКОВЫМ ТУННЕЛЯМ (снизу вверх)
 		for _, exitY := range sideExits {
 			distFromFloor := (h.Y + h.H) - exitY
 			if distFromFloor > 6 {
@@ -3123,7 +3784,7 @@ func sgFinalizeHubAccessibility(grid [][]int, hubs []sgHub, tags *sgSkyTagGrid, 
 			}
 		}
 
-		// 5. ГАРАНТИЯ: Если хаб пустой и высокий, делаем зигзаг снизу вверх
+		// Если хаб пустой и высокий, делаем зигзаг снизу вверх
 		if len(ceilingExits) == 0 && len(sideExits) == 0 && h.H > 8 {
 			sideLeft := true
 			for py := h.Y + h.H - stepY; py >= h.Y+4; py -= stepY {
@@ -3149,7 +3810,7 @@ func sgPlaceHubLedge(grid [][]int, x, y, w int, tags *sgSkyTagGrid) {
 	for dx := 0; dx < w; dx++ {
 		nx := x + dx
 		if y >= 0 && y < len(grid) && nx >= 0 && nx < len(grid[0]) {
-			grid[y][nx] = sgCellSolid
+			grid[y][nx] = sgCellPlatform // one-way hub ledge
 			if tags != nil && objID > 0 {
 				tags.MarkCell(nx, y, objID, sgSkyObjectShaftStep)
 			}
@@ -3172,7 +3833,7 @@ func sgApplyGroundAirCorridor(grid [][]int, splitY int, cfg ProcGenConfig, inlet
 		keep[i] = make([]bool, gridW)
 	}
 
-	// 1. Помечаем зоны входов в пещеры (их не трогаем)
+	// Помечаем зоны входов в пещеры (их не трогаем)
 	for _, inlet := range inlets {
 		left := sgClamp(inlet.CenterX-inlet.Width/2-1, 0, gridW-1)
 		right := sgClamp(left+inlet.Width+1, 0, gridW-1)
@@ -3183,7 +3844,7 @@ func sgApplyGroundAirCorridor(grid [][]int, splitY int, cfg ProcGenConfig, inlet
 		}
 	}
 
-	// 2. Помечаем ВСЕ блоки всех ступенек в цепочках
+	// Помечаем ВСЕ блоки всех ступенек в цепочках
 	stepW := max(sgPlayerW, sgScaleX(3, cfg))
 	for _, chain := range chains {
 		for _, step := range chain.Steps {
@@ -3198,7 +3859,7 @@ func sgApplyGroundAirCorridor(grid [][]int, splitY int, cfg ProcGenConfig, inlet
 		}
 	}
 
-	// 3. Удаляем только то, что не помечено как "нужное"
+	// Удаляем только то, что не помечено как "нужное"
 	for y := y0; y <= y1; y++ {
 		for x := 0; x < gridW; x++ {
 			if keep[y][x] {
@@ -3439,7 +4100,7 @@ func sgEnsureGlobalPassableConnectivity(rng *rand.Rand, grid [][]int, splitY int
 		bridgeW := bridgeX2 - bridgeX1 + 3
 		bridgeY = sgClamp(bridgeY, 1, splitY-2)
 		bridgeX1 = sgClamp(bridgeX1, 1, max(1, gridW-bridgeW-1))
-		sgWriteSolidRect(grid, bridgeX1, bridgeY, bridgeW, 1)
+		sgWritePlatformRect(grid, bridgeX1, bridgeY, bridgeW, 1)
 		if tags != nil {
 			objID := tags.NewObject(sgSkyObjectShaftStep)
 			tags.MarkRect(bridgeX1, bridgeY, bridgeW, 1, objID, sgSkyObjectShaftStep)
@@ -3693,7 +4354,9 @@ func sgPassableComponents(grid [][]int, splitY int) []sgComponent {
 }
 
 func sgIsPassable(cell int) bool {
-	return cell == sgCellAir || cell == sgCellBackwall
+	// sgCellPlatform (3) is a one-way platform: passable from below / from any
+	// horizontal direction, so it counts as "not solid" for BFS and placement checks.
+	return cell != sgCellSolid
 }
 
 func sgCellsForValue(grid [][]int, target int) [][2]int {
@@ -4013,7 +4676,8 @@ func sgPruneUnreachableSkyPlatforms(grid [][]int, tags *sgSkyTagGrid, splitY int
 	for y := 1; y < splitY; y++ {
 		x := 0
 		for x < gridW {
-			if grid[y][x] != sgCellSolid {
+			c := grid[y][x]
+			if c != sgCellSolid && c != sgCellPlatform {
 				x++
 				continue
 			}
@@ -4023,9 +4687,9 @@ func sgPruneUnreachableSkyPlatforms(grid [][]int, tags *sgSkyTagGrid, splitY int
 				x++
 				continue
 			}
-			// Collect the full contiguous solid run at this row.
+			// Collect the full contiguous run (solid or platform) at this row.
 			runStart := x
-			for x < gridW && grid[y][x] == sgCellSolid {
+			for x < gridW && (grid[y][x] == sgCellSolid || grid[y][x] == sgCellPlatform) {
 				x++
 			}
 			runEnd := x - 1 // inclusive
@@ -4102,7 +4766,7 @@ func sgRunPreflightValidation(grid [][]int, tags *sgSkyTagGrid, skyHubs []sgSkyH
 		}
 	}
 
-	// 1. Every sky hub must have at least one reachable cell on the row above it.
+	// Every sky hub must have at least one reachable cell on the row above it.
 	for hi, hub := range skyHubs {
 		topY := hub.Y - 1
 		if topY < 0 || topY >= height {
@@ -4121,7 +4785,7 @@ func sgRunPreflightValidation(grid [][]int, tags *sgSkyTagGrid, skyHubs []sgSkyH
 		}
 	}
 
-	// 2. Every inlet must be reachable from the spawn zone at splitY.
+	// Every inlet must be reachable from the spawn zone at splitY.
 	for ii, inlet := range inlets {
 		cx := inlet.CenterX
 		if cx < 0 || cx >= width {
@@ -4133,7 +4797,7 @@ func sgRunPreflightValidation(grid [][]int, tags *sgSkyTagGrid, skyHubs []sgSkyH
 		}
 	}
 
-	// 3. Full underground connectivity: every floor cell (solid with air directly
+	// Full underground connectivity: every floor cell (solid with air directly
 	//    above it) must be reachable from spawn. This catches isolated pockets that
 	//    the player could fall into but never escape. The simplex texture pass is
 	//    designed to only extend existing connected passages, so no isolated niches
