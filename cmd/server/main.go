@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 
 	"warpedrealms/serverapp"
 	"warpedrealms/shared"
@@ -16,6 +18,10 @@ func main() {
 		roomsDir = flag.String("rooms", shared.DefaultRoomsDir, "path to room templates")
 	)
 	flag.Parse()
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6061", nil))
+	}()
 
 	server, err := serverapp.NewServer(*addr, *authDB, *manifest, *roomsDir)
 	if err != nil {
