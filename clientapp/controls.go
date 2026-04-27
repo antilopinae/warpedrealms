@@ -23,6 +23,7 @@ const (
 	ActionInteract    Action = "interact"
 	ActionUseJumpLink Action = "use_jump_link"
 	ActionDropDown    Action = "drop_down"
+	ActionDash        Action = "dash"
 )
 
 type BindingKind string
@@ -36,6 +37,7 @@ var actionOrder = []Action{
 	ActionMoveLeft,
 	ActionMoveRight,
 	ActionJump,
+	ActionDash,
 	ActionAttack,
 	ActionSkill1,
 	ActionSkill2,
@@ -55,6 +57,7 @@ var actionLabels = map[Action]string{
 	ActionSkill3:      "Skill 3",
 	ActionInteract:    "Interact",
 	ActionUseJumpLink: "Jump Link",
+	ActionDash:        "Dash",
 }
 
 type InputBinding struct {
@@ -80,13 +83,14 @@ var defaultBindings = map[Action]InputBinding{
 	ActionMoveLeft:    KeyBinding(ebiten.KeyA),
 	ActionMoveRight:   KeyBinding(ebiten.KeyD),
 	ActionJump:        KeyBinding(ebiten.KeySpace),
-	ActionAttack:      MouseBinding(ebiten.MouseButtonLeft),
+	ActionAttack:      KeyBinding(ebiten.KeyI),
 	ActionSkill1:      MouseBinding(ebiten.MouseButtonRight),
 	ActionSkill2:      KeyBinding(ebiten.KeyQ),
 	ActionSkill3:      KeyBinding(ebiten.KeyR),
 	ActionInteract:    KeyBinding(ebiten.KeyF),
 	ActionUseJumpLink: KeyBinding(ebiten.KeyE),
 	ActionDropDown:    KeyBinding(ebiten.KeyS),
+	ActionDash:        KeyBinding(ebiten.KeyShiftLeft),
 }
 
 func KeyBinding(key ebiten.Key) InputBinding {

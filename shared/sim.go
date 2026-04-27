@@ -69,41 +69,62 @@ func simulateEntity(state *EntityState, input InputCommand, solids []Rect, platf
 	}
 
 	dt := FixedDeltaSeconds
-	moveX := clamp(input.MoveX, -1, 1)
-	targetVelocityX := moveX * cfg.MoveSpeed
-	acceleration := cfg.GroundAccel
-	if !state.Grounded {
-		acceleration = cfg.AirAccel
+
+	if state.DashTimer > 0 {
+		state.DashTimer -= dt
+	}
+	if state.DashCooldown > 0 {
+		state.DashCooldown -= dt
 	}
 
-	if moveX == 0 {
-		state.Velocity.X = moveToward(state.Velocity.X, 0, cfg.Friction*dt)
+	if input.Dash && state.DashCooldown <= 0 {
+		state.DashTimer = 0.10
+		state.DashCooldown = 1.1
+		state.Velocity.Y = 0
+	}
+
+	if state.DashTimer > 0 {
+		// Во время рывка скорость фиксирована, гравитация не действует
+		dashSpeed := 720.0
+		state.Velocity.X = state.Facing * dashSpeed
+		state.Velocity.Y = 0
 	} else {
-		state.Velocity.X = moveToward(state.Velocity.X, targetVelocityX, acceleration*dt)
-		state.Facing = math.Copysign(1, moveX)
-	}
-
-	if cfg.JumpSpeed > 0 && input.Jump && state.Grounded {
-		state.Velocity.Y = -cfg.JumpSpeed
-		state.Grounded = false
-	}
-
-	actualGravity := cfg.Gravity
-
-	// Если игрок летит ВВЕРХ (Velocity.Y < 0)
-	if state.Velocity.Y < 0 {
-		if !input.Jump {
-			// Если кнопку ОТПУСТИЛИ раньше времени — увеличиваем гравитацию в 3 раза.
-			// Это заставит персонажа быстрее достичь пика и упасть (короткий прыжок).
-			actualGravity *= 2.15
-		} else {
-			// Если кнопку ДЕРЖАТ — можем сделать гравитацию чуть слабее (0.8),
-			// чтобы прыжок казался более "парящим" и высоким.
-			actualGravity *= 0.85
+		moveX := clamp(input.MoveX, -1, 1)
+		targetVelocityX := moveX * cfg.MoveSpeed
+		acceleration := cfg.GroundAccel
+		if !state.Grounded {
+			acceleration = cfg.AirAccel
 		}
+
+		if moveX == 0 {
+			state.Velocity.X = moveToward(state.Velocity.X, 0, cfg.Friction*dt)
+		} else {
+			state.Velocity.X = moveToward(state.Velocity.X, targetVelocityX, acceleration*dt)
+			state.Facing = math.Copysign(1, moveX)
+		}
+
+		if cfg.JumpSpeed > 0 && input.Jump && state.Grounded {
+			state.Velocity.Y = -cfg.JumpSpeed
+			state.Grounded = false
+		}
+
+		actualGravity := cfg.Gravity
+
+		// Если игрок летит ВВЕРХ (Velocity.Y < 0)
+		if state.Velocity.Y < 0 {
+			if !input.Jump {
+				// Если кнопку ОТПУСТИЛИ раньше времени — увеличиваем гравитацию в 3 раза.
+				// Это заставит персонажа быстрее достичь пика и упасть (короткий прыжок).
+				actualGravity *= 2.15
+			} else {
+				// Если кнопку ДЕРЖАТ — можем сделать гравитацию чуть слабее (0.8),
+				// чтобы прыжок казался более "парящим" и высоким.
+				actualGravity *= 0.85
+			}
+		}
+		state.Velocity.Y += actualGravity * dt
 	}
 
-	state.Velocity.Y += actualGravity * dt
 	if state.Velocity.Y > cfg.MaxFallSpeed {
 		state.Velocity.Y = cfg.MaxFallSpeed
 	}

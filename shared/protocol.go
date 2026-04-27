@@ -24,6 +24,7 @@ type InputCommand struct {
 	MoveY         float64 `json:"move_y"`
 	Jump          bool    `json:"jump"`
 	DropDown      bool    `json:"drop_down"`
+	Dash          bool    `json:"dash"`
 	PrimaryAttack bool    `json:"primary_attack"`
 	Skill1        bool    `json:"skill1"`
 	Skill2        bool    `json:"skill2"`

@@ -316,6 +316,7 @@ func GenerateSandwichLocation(rng *rand.Rand, id string, cfg ProcGenConfig) Sand
 
 	returnLoopUsed := sgAddReturnLoops(rng, grid, splitY, inlets, hubs, carveRadius, cfg, skyTags)
 	sgAddExitTunnels(rng, grid, splitY, cfg, inlets, skyTags, returnLoopUsed)
+	sgFillAllShaftPits(grid, splitY, bossRooms, miniBossRooms)
 	sgAddInternalLedges(rng, grid, splitY, cfg)
 	// Close single-cell horizontal gaps between solid platforms.
 	sgFillThinGaps(grid)
@@ -1069,6 +1070,59 @@ func sgExtendChainToGround(rng *rand.Rand, ch *sgStairChain, grid [][]int, tags 
 		}
 		if len(ch.Steps) > 40 {
 			break
+		}
+	}
+}
+
+// sgFillAllShaftPits теперь учитывает комнаты боссов и не засыпает их.
+func sgFillAllShaftPits(grid [][]int, splitY int, bossRooms, miniBossRooms [][4]int) {
+	gridH := len(grid)
+	gridW := len(grid[0])
+
+	// Вспомогательная функция для проверки: находится ли точка внутри комнаты босса
+	isInsideBossRoom := func(x, y int) bool {
+		for _, r := range append(bossRooms, miniBossRooms...) {
+			cx, cy, rx, ry := r[0], r[1], r[2], r[3]
+			// Границы комнаты (с небольшим запасом в 1 блок)
+			if x >= cx-rx && x <= cx+rx && y >= cy-ry && y <= cy {
+				return true
+			}
+		}
+		return false
+	}
+
+	for x := 0; x < gridW; x++ {
+		for y := gridH - 1; y > splitY; y-- {
+			// Если мы уперлись в комнату босса — СТОП для этой колонки
+			if isInsideBossRoom(x, y) {
+				break
+			}
+
+			if grid[y][x] == sgCellSolid {
+				continue
+			}
+
+			l, r := x, x
+			for l > 0 && grid[y][l] != sgCellSolid {
+				l--
+			}
+			for r < gridW-1 && grid[y][r] != sgCellSolid {
+				r++
+			}
+			width := r - l
+
+			// Если это узкая шахта — засыпаем
+			if width < 16 {
+				for ix := l + 1; ix < r; ix++ {
+					// Даже при засыпке проверяем, не замуровываем ли мы край комнаты
+					if !isInsideBossRoom(ix, y) {
+						grid[y][ix] = sgCellSolid
+					}
+				}
+			} else {
+				// Вышли в широкий коридор
+				break
+			}
 		}
 	}
 }

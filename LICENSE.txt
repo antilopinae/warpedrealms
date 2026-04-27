@@ -1,0 +1,52 @@
+Warped Realms - Software License Agreement
+
+Copyright (c) 2024 [Mikhail Baskakov]. All rights reserved.
+
+1. LICENCE GRANT AND SCOPE
+
+This Software, including its source code, assets, mathematical models, and
+procedural generation algorithms, is the exclusive intellectual property of the
+Copyright Holder. This license grants you a non-exclusive, non-transferable
+right to view and study the source code for educational and evaluative purposes
+only.
+
+2. PROTECTION OF GAME CONCEPT AND MECHANICS
+
+The Copyright Holder intends to protect the unique gameplay "DNA" and
+architectural concepts of Warped Realms. By accessing this Software, you
+acknowledge and agree that the following elements are proprietary and shall not
+be reproduced of all parts in one whole in any competing software products.
+
+3. PROHIBITED ACTIONS
+
+You are strictly prohibited from:
+
+  - Cloning and Forking: Creating derivative works that replicate the core
+    mechanics, logic flow, or gameplay loops described in the Software for
+    public or commercial distribution.
+  - Commercial Use: Using any part of this code, assets, or data structures in a
+    commercial product or service without a separate written commercial
+    agreement from the Copyright Holder.
+  - Redistribution: Publishing, hosting, or sharing the Software or any modified
+    versions thereof on any public platform without explicit written consent.
+  - Reverse Engineering for Reconstruction: Analyzing the Software to create a
+    "clean room" implementation of the proprietary algorithms for use in a
+    competing project.
+
+4. INTELLECTUAL PROPERTY
+
+The name "Warped Realms," the lore, the balance constants, the manifest
+structures, and the overall game design are protected under international
+copyright and trade secret laws. This license does not grant any rights to use
+trademarks, service marks, or logos belonging to the Copyright Holder.
+
+5. TERMINATION
+
+This license terminates automatically if you breach any of its terms. Upon
+termination, you must destroy all copies of the Software in your possession.
+
+6. DISCLAIMER OF WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY.

@@ -2,7 +2,11 @@
   "bindings": {
     "attack": {
       "kind": "key",
-      "code": 5
+      "code": 8
+    },
+    "dash": {
+      "kind": "key",
+      "code": 113
     },
     "drop_down": {
       "kind": "key",
@@ -25,16 +29,16 @@
       "code": 3
     },
     "skill_1": {
-      "kind": "key",
-      "code": 14
+      "kind": "mouse",
+      "code": 2
     },
     "skill_2": {
       "kind": "key",
-      "code": 15
+      "code": 16
     },
     "skill_3": {
       "kind": "key",
-      "code": 35
+      "code": 17
     },
     "use_jump_link": {
       "kind": "key",

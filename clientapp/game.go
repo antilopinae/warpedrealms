@@ -163,8 +163,9 @@ func NewGame(baseURL string, manifestPath string, roomsDir string) (*Game, error
 		{ActionMoveLeft, 0, 45, 50, 40, "A"},
 		{ActionDropDown, 60, 45, 50, 40, "S"},
 		{ActionMoveRight, 120, 45, 50, 40, "D"},
-		{ActionAttack, 0, 95, 80, 35, "ATK"},
+		{ActionAttack, 0, 95, 80, 35, "I"},
 		{ActionSkill1, 90, 95, 80, 35, "SKL"},
+		{ActionDash, 150, 95, 70, 35, "SHIFT"},
 	}
 
 	game.inputOverlayKeys = make([]inputKeyOverlay, len(tempKeys))
@@ -710,6 +711,7 @@ func (g *Game) captureInput() shared.InputCommand {
 		Seq:           g.nextSeq,
 		MoveX:         moveX,
 		Jump:          g.controls.Pressed(ActionJump),
+		Dash:          g.controls.Pressed(ActionDash),
 		PrimaryAttack: g.controls.JustPressed(ActionAttack),
 		Skill1:        g.controls.JustPressed(ActionSkill1),
 		Skill2:        g.controls.JustPressed(ActionSkill2),

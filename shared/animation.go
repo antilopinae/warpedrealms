@@ -21,6 +21,7 @@ const (
 	AnimationEmerge   AnimationState = "emerge"
 	AnimationHit      AnimationState = "hit"
 	AnimationDeath    AnimationState = "death"
+	AnimationDash     AnimationState = "dash"
 )
 
 func TriggerAnimation(state *EntityState, animation AnimationState, startedAt float64) {
@@ -56,6 +57,8 @@ func DesiredMovementAnimation(state EntityState) AnimationState {
 		return AnimationDeath
 	case state.Travel != nil && state.Travel.Active:
 		return AnimationTravel
+	case state.DashTimer > 0:
+		return AnimationDash
 	case !state.Grounded && state.Velocity.Y < -40:
 		return AnimationJump
 	case !state.Grounded && state.Velocity.Y > 40:
@@ -74,7 +77,7 @@ func AnimationIsOneShot(animation AnimationState) bool {
 	case AnimationAttack1, AnimationAttack2, AnimationAttack3,
 		AnimationSkill1, AnimationSkill2, AnimationSkill3,
 		AnimationInteract, AnimationTravel, AnimationEmerge,
-		AnimationHit, AnimationDeath:
+		AnimationHit, AnimationDeath, AnimationDash:
 		return true
 	default:
 		return false
