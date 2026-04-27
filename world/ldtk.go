@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Warped Realms. All rights reserved.
+// This source code is proprietary and confidential.
+// Unauthorized copying or cloning of game mechanics is strictly prohibited.
+// See LICENSE file in the project root for full license details.
+
 package world
 
 import (
@@ -76,17 +81,17 @@ type ldtkField struct {
 
 // LDtkTile is a single rendered tile from an LDtk layer.
 type LDtkTile struct {
-	X, Y         int     // destination pixel position inside the level
-	SrcX, SrcY   int     // source pixel position inside the tileset image
-	W, H         int     // tile size in pixels
+	X, Y         int // destination pixel position inside the level
+	SrcX, SrcY   int // source pixel position inside the tileset image
+	W, H         int // tile size in pixels
 	FlipH, FlipV bool
 	Alpha        float64 // 1 = fully opaque
 }
 
 // LDtkLayer is a visual tile layer extracted from LDtk.
 type LDtkLayer struct {
-	Name        string
-	TilesetPath string // absolute path to the tileset PNG
+	Name         string
+	TilesetPath  string // absolute path to the tileset PNG
 	TileW, TileH int
 	Tiles        []LDtkTile
 }
@@ -292,8 +297,8 @@ func ldtkExtractEntities(m *MapData, layer ldtkLayerInstance) {
 
 		case "rift":
 			rift := MapRift{
-				ID:   fmt.Sprintf("rift-%d-%d", e.PX[0], e.PX[1]),
-				Area: shared.Rect{X: px, Y: py, W: float64(e.Width), H: float64(e.Height)},
+				ID:     fmt.Sprintf("rift-%d-%d", e.PX[0], e.PX[1]),
+				Area:   shared.Rect{X: px, Y: py, W: float64(e.Width), H: float64(e.Height)},
 				Target: props["target"],
 				Kind:   props["kind"],
 			}

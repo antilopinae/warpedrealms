@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Warped Realms. All rights reserved.
+// This source code is proprietary and confidential.
+// Unauthorized copying or cloning of game mechanics is strictly prohibited.
+// See LICENSE file in the project root for full license details.
+
 package world
 
 // tiled.go — runtime map data structures shared by the LDtk loader and the
@@ -8,13 +13,13 @@ import "warpedrealms/shared"
 
 // MapData is the unified in-memory representation of one level.
 type MapData struct {
-	ID          string // level identifier (e.g. LDtk level name or procgen "room_01")
-	Path        string // source file path (empty for in-memory generated maps)
+	ID   string // level identifier (e.g. LDtk level name or procgen "room_01")
+	Path string // source file path (empty for in-memory generated maps)
 
-	Width      int // grid width  in blocks
-	Height     int // grid height in blocks
-	TileWidth  int // pixels per block (horizontal)
-	TileHeight int // pixels per block (vertical)
+	Width       int // grid width  in blocks
+	Height      int // grid height in blocks
+	TileWidth   int // pixels per block (horizontal)
+	TileHeight  int // pixels per block (vertical)
 	PixelWidth  int // Width  * TileWidth
 	PixelHeight int // Height * TileHeight
 
@@ -22,13 +27,13 @@ type MapData struct {
 	// Nil / empty for maps that only carry collision geometry.
 	LDtkLayers []LDtkLayer
 
-	SolidRects    []shared.Rect  // collision rectangles (pixel coords)
-	PlatformRects []shared.Rect  // one-way platform rects (pixel coords)
-	PlayerSpawns []shared.Vec2  // player spawn points
-	RatSpawns    []shared.Vec2  // rat / enemy spawn points
-	JumpLinks    []MapJumpLink  // portal / door connections
-	RevealZones  []MapRevealZone
-	Rifts        []MapRift      // transient finite-use portals
+	SolidRects    []shared.Rect // collision rectangles (pixel coords)
+	PlatformRects []shared.Rect // one-way platform rects (pixel coords)
+	PlayerSpawns  []shared.Vec2 // player spawn points
+	RatSpawns     []shared.Vec2 // rat / enemy spawn points
+	JumpLinks     []MapJumpLink // portal / door connections
+	RevealZones   []MapRevealZone
+	Rifts         []MapRift // transient finite-use portals
 }
 
 // DefaultPlayerSpawn returns a safe player spawn point.
@@ -43,14 +48,14 @@ func (m *MapData) DefaultPlayerSpawn(index int) shared.Vec2 {
 // Target may be an explicit room ID (e.g. "room_02") or the relative
 // strings "above" / "below" for backward compatibility.
 type MapJumpLink struct {
-	ID         string
-	Area       shared.Rect // trigger zone in local level space
-	Target     string      // destination room identifier
-	Label      string      // UI label shown near the portal
-	HasArrival bool
-	ArrivalX   float64 // arrival X in target room local space
-	ArrivalY   float64 // arrival Y in target room local space
-	HasPreview bool
+	ID                                     string
+	Area                                   shared.Rect // trigger zone in local level space
+	Target                                 string      // destination room identifier
+	Label                                  string      // UI label shown near the portal
+	HasArrival                             bool
+	ArrivalX                               float64 // arrival X in target room local space
+	ArrivalY                               float64 // arrival Y in target room local space
+	HasPreview                             bool
 	PreviewX, PreviewY, PreviewW, PreviewH float64
 }
 

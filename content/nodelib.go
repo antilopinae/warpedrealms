@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Warped Realms. All rights reserved.
+// This source code is proprietary and confidential.
+// Unauthorized copying or cloning of game mechanics is strictly prohibited.
+// See LICENSE file in the project root for full license details.
+
 package content
 
 // nodelib.go — pre-authored room node definitions.
@@ -39,7 +44,7 @@ import (
 // NodeIsland is a solid rectangular block area within a node (block coords).
 type NodeIsland struct {
 	X, Y, W, H int
-	Kind        string // "main" | "branch" | "step" | "secret"
+	Kind       string // "main" | "branch" | "step" | "secret"
 }
 
 // NodeSocket describes the passable edge of a node side.
@@ -149,15 +154,15 @@ func AllNodes() []NodeDef {
 			LeftSocket:  NodeSocket{SurfaceY: GND, Type: "platform"},
 			RightSocket: NodeSocket{SurfaceY: GND, Type: "platform"},
 			Islands: []NodeIsland{
-				{X: 2, Y: GND, W: 30, H: 3, Kind: "main"},    // ground left
-				{X: 48, Y: GND, W: 30, H: 3, Kind: "main"},   // ground right
-				{X: 5, Y: L1, W: 28, H: 2, Kind: "step"},     // L1 left
-				{X: 47, Y: L2, W: 28, H: 2, Kind: "step"},    // L2 right
-				{X: 5, Y: L3, W: 28, H: 2, Kind: "step"},     // L3 left
-				{X: 47, Y: L4, W: 28, H: 2, Kind: "step"},    // L4 right
-				{X: 5, Y: L5, W: 28, H: 2, Kind: "step"},     // L5 left
-				{X: 47, Y: L6, W: 28, H: 2, Kind: "branch"},  // L6 right
-				{X: 18, Y: L7, W: 42, H: 3, Kind: "secret"},  // tower crown L7
+				{X: 2, Y: GND, W: 30, H: 3, Kind: "main"},   // ground left
+				{X: 48, Y: GND, W: 30, H: 3, Kind: "main"},  // ground right
+				{X: 5, Y: L1, W: 28, H: 2, Kind: "step"},    // L1 left
+				{X: 47, Y: L2, W: 28, H: 2, Kind: "step"},   // L2 right
+				{X: 5, Y: L3, W: 28, H: 2, Kind: "step"},    // L3 left
+				{X: 47, Y: L4, W: 28, H: 2, Kind: "step"},   // L4 right
+				{X: 5, Y: L5, W: 28, H: 2, Kind: "step"},    // L5 left
+				{X: 47, Y: L6, W: 28, H: 2, Kind: "branch"}, // L6 right
+				{X: 18, Y: L7, W: 42, H: 3, Kind: "secret"}, // tower crown L7
 			},
 			Entities: []NodeEntity{
 				{Type: "Rat", X: 15, Y: GND},
@@ -429,12 +434,12 @@ func AllNodes() []NodeDef {
 			LeftSocket:  NodeSocket{SurfaceY: L1, Type: "platform"},
 			RightSocket: NodeSocket{SurfaceY: L1, Type: "platform"},
 			Islands: []NodeIsland{
-				{X: 2, Y: L1, W: 56, H: 3, Kind: "main"},   // bridge deck L1
-				{X: 8, Y: L2, W: 18, H: 2, Kind: "step"},   // step L2
-				{X: 34, Y: L2, W: 18, H: 2, Kind: "step"},  // step L2
+				{X: 2, Y: L1, W: 56, H: 3, Kind: "main"},    // bridge deck L1
+				{X: 8, Y: L2, W: 18, H: 2, Kind: "step"},    // step L2
+				{X: 34, Y: L2, W: 18, H: 2, Kind: "step"},   // step L2
 				{X: 16, Y: L3, W: 26, H: 2, Kind: "branch"}, // shelf L3
-				{X: 4, Y: L4, W: 20, H: 2, Kind: "step"},   // step L4
-				{X: 36, Y: L4, W: 20, H: 2, Kind: "step"},  // step L4
+				{X: 4, Y: L4, W: 20, H: 2, Kind: "step"},    // step L4
+				{X: 36, Y: L4, W: 20, H: 2, Kind: "step"},   // step L4
 				{X: 10, Y: L5, W: 40, H: 2, Kind: "branch"}, // high shelf L5
 				{X: 14, Y: L6, W: 32, H: 2, Kind: "secret"}, // secret L6 (5 above L5)
 			},

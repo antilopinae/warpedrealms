@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Warped Realms. All rights reserved.
+// This source code is proprietary and confidential.
+// Unauthorized copying or cloning of game mechanics is strictly prohibited.
+// See LICENSE file in the project root for full license details.
+
 package clientapp
 
 import (
@@ -10,10 +15,10 @@ import (
 // A* platformer pathfinding constants.
 // The bot body occupies astarBW × astarBH grid cells (3 wide, 5 tall).
 const (
-	astarBlock = 16  // world pixels per grid cell
-	astarBW    = 3   // body width in cells (48 px)
-	astarBH    = 5   // body height in cells (80 px)
-	astarBHalf = 1   // half of body width (floor(3/2))
+	astarBlock = 16 // world pixels per grid cell
+	astarBW    = 3  // body width in cells (48 px)
+	astarBH    = 5  // body height in cells (80 px)
+	astarBHalf = 1  // half of body width (floor(3/2))
 
 	astarJumpH  = 8  // max jump height in cells (~131 px = 8.2 blocks)
 	astarJumpDX = 10 // max horizontal range during a jump
@@ -158,8 +163,8 @@ type astarNode struct {
 
 type astarHeap []*astarNode
 
-func (h astarHeap) Len() int            { return len(h) }
-func (h astarHeap) Less(i, j int) bool  { return h[i].f < h[j].f }
+func (h astarHeap) Len() int           { return len(h) }
+func (h astarHeap) Less(i, j int) bool { return h[i].f < h[j].f }
 func (h astarHeap) Swap(i, j int) {
 	h[i], h[j] = h[j], h[i]
 	h[i].index = i

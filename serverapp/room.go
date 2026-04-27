@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Warped Realms. All rights reserved.
+// This source code is proprietary and confidential.
+// Unauthorized copying or cloning of game mechanics is strictly prohibited.
+// See LICENSE file in the project root for full license details.
+
 package serverapp
 
 import (
@@ -42,8 +47,8 @@ type RaidRoom struct {
 	peers         map[string]*Peer
 	npcs          map[string]*serverNPC
 	loot          map[string]*lootPickup
-	roomSolids     map[string][]shared.Rect // roomID → its own solid rects
-	roomPlatforms  map[string][]shared.Rect // roomID → one-way platform rects
+	roomSolids    map[string][]shared.Rect // roomID → its own solid rects
+	roomPlatforms map[string][]shared.Rect // roomID → one-way platform rects
 	exitRotation  []shared.ExitState
 	spawnRotation []shared.Vec2
 	exitCursor    int

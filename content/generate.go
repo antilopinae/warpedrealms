@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Warped Realms. All rights reserved.
+// This source code is proprietary and confidential.
+// Unauthorized copying or cloning of game mechanics is strictly prohibited.
+// See LICENSE file in the project root for full license details.
+
 package content
 
 import (
@@ -293,8 +298,8 @@ func (b *Bundle) buildRaidFromMaps(maps []*world.MapData) (*GeneratedRaid, error
 			Bounds:       shared.Rect{W: float64(m.PixelWidth), H: float64(m.PixelHeight)},
 			BackgroundID: "cave",
 			TileStyleID:  "cave",
-			Solids:    append([]shared.Rect(nil), m.SolidRects...),
-			Platforms: append([]shared.Rect(nil), m.PlatformRects...),
+			Solids:       append([]shared.Rect(nil), m.SolidRects...),
+			Platforms:    append([]shared.Rect(nil), m.PlatformRects...),
 		}
 	}
 

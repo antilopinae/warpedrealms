@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Warped Realms. All rights reserved.
+// This source code is proprietary and confidential.
+// Unauthorized copying or cloning of game mechanics is strictly prohibited.
+// See LICENSE file in the project root for full license details.
+
 package world
 
 // ldtkwrite.go — generates valid LDtk 1.5.3 JSON files from programmatic level data.
@@ -15,37 +20,37 @@ import (
 // ─── LDtk editor-compatible JSON types ───────────────────────────────────────
 
 type ldtkWriteFile struct {
-	JSONVersion      string             `json:"jsonVersion"`
-	AppBuildID       int                `json:"appBuildId"`
-	Header           ldtkWriteHeader    `json:"__header__"`
-	Iid              string             `json:"iid"`
-	ExternalLevels   bool               `json:"externalLevels"`
-	BackupOnSave     bool               `json:"backupOnSave"`
-	BackupLimit      int                `json:"backupLimit"`
-	BackupRelPath    interface{}        `json:"backupRelPath"`
-	MinifyJson       bool               `json:"minifyJson"`
-	ImageExportMode  string             `json:"imageExportMode"`
-	ExportLevelBg    bool               `json:"exportLevelBg"`
-	PngFilePattern   interface{}        `json:"pngFilePattern"`
-	SimplifiedExport bool               `json:"simplifiedExport"`
-	LevelNamePattern string             `json:"levelNamePattern"`
-	BgColor          string             `json:"bgColor"`
-	DefaultPivotX    float64            `json:"defaultPivotX"`
-	DefaultPivotY    float64            `json:"defaultPivotY"`
-	DefaultGridSize  int                `json:"defaultGridSize"`
-	DefaultEntityW   int                `json:"defaultEntityWidth"`
-	DefaultEntityH   int                `json:"defaultEntityHeight"`
-	DefaultLevelW    int                `json:"defaultLevelWidth"`
-	DefaultLevelH    int                `json:"defaultLevelHeight"`
-	DefaultLevelBg   interface{}        `json:"defaultLevelBgColor"`
-	Flags            []string           `json:"flags"`
-	WorldLayout      string             `json:"worldLayout"`
-	WorldGridW       int                `json:"worldGridWidth"`
-	WorldGridH       int                `json:"worldGridHeight"`
-	Worlds           []interface{}      `json:"worlds"`
-	Toc              []interface{}      `json:"toc"`
-	Defs             ldtkWriteDefs      `json:"defs"`
-	Levels           []ldtkWriteLevel   `json:"levels"`
+	JSONVersion      string           `json:"jsonVersion"`
+	AppBuildID       int              `json:"appBuildId"`
+	Header           ldtkWriteHeader  `json:"__header__"`
+	Iid              string           `json:"iid"`
+	ExternalLevels   bool             `json:"externalLevels"`
+	BackupOnSave     bool             `json:"backupOnSave"`
+	BackupLimit      int              `json:"backupLimit"`
+	BackupRelPath    interface{}      `json:"backupRelPath"`
+	MinifyJson       bool             `json:"minifyJson"`
+	ImageExportMode  string           `json:"imageExportMode"`
+	ExportLevelBg    bool             `json:"exportLevelBg"`
+	PngFilePattern   interface{}      `json:"pngFilePattern"`
+	SimplifiedExport bool             `json:"simplifiedExport"`
+	LevelNamePattern string           `json:"levelNamePattern"`
+	BgColor          string           `json:"bgColor"`
+	DefaultPivotX    float64          `json:"defaultPivotX"`
+	DefaultPivotY    float64          `json:"defaultPivotY"`
+	DefaultGridSize  int              `json:"defaultGridSize"`
+	DefaultEntityW   int              `json:"defaultEntityWidth"`
+	DefaultEntityH   int              `json:"defaultEntityHeight"`
+	DefaultLevelW    int              `json:"defaultLevelWidth"`
+	DefaultLevelH    int              `json:"defaultLevelHeight"`
+	DefaultLevelBg   interface{}      `json:"defaultLevelBgColor"`
+	Flags            []string         `json:"flags"`
+	WorldLayout      string           `json:"worldLayout"`
+	WorldGridW       int              `json:"worldGridWidth"`
+	WorldGridH       int              `json:"worldGridHeight"`
+	Worlds           []interface{}    `json:"worlds"`
+	Toc              []interface{}    `json:"toc"`
+	Defs             ldtkWriteDefs    `json:"defs"`
+	Levels           []ldtkWriteLevel `json:"levels"`
 }
 
 type ldtkWriteHeader struct {
@@ -68,35 +73,35 @@ type ldtkWriteDefs struct {
 }
 
 type ldtkWriteLayerDef struct {
-	Identifier     string      `json:"identifier"`
-	Type           string      `json:"type"`
-	UID            int         `json:"uid"`
-	GridSize       int         `json:"gridSize"`
-	GuideGridWid   int         `json:"guideGridWid"`
-	GuideGridHei   int         `json:"guideGridHei"`
-	DisplayOpacity float64     `json:"displayOpacity"`
-	InactiveOpacity float64    `json:"inactiveOpacity"`
-	HideInList     bool        `json:"hideInList"`
-	HideFieldsWhenInactive bool `json:"hideFieldsWhenInactive"`
-	CanSelectWhenInactive  bool `json:"canSelectWhenInactive"`
-	RenderInWorldView bool     `json:"renderInWorldView"`
-	PxOffsetX      int         `json:"pxOffsetX"`
-	PxOffsetY      int         `json:"pxOffsetY"`
-	Parallaxfactorx float64    `json:"parallaxFactorX"`
-	ParallaxfactorY float64    `json:"parallaxFactorY"`
-	ParallaxScaling bool       `json:"parallaxScaling"`
-	RequiredTags   []string    `json:"requiredTags"`
-	ExcludedTags   []string    `json:"excludedTags"`
-	IntGridValues  []ldtkIntGridValue `json:"intGridValues"`
-	IntGridValuesGroups []interface{} `json:"intGridValuesGroups"`
-	AutoRuleGroups []interface{} `json:"autoRuleGroups"`
-	AutoSourceLayerDefUid interface{} `json:"autoSourceLayerDefUid"`
-	TilesetDefUid  interface{} `json:"tilesetDefUid"`
-	TilePivotX     float64     `json:"tilePivotX"`
-	TilePivotY     float64     `json:"tilePivotY"`
-	Doc            interface{} `json:"doc"`
-	UiColor        interface{} `json:"uiColor"`
-	UiFilterTags   []string    `json:"uiFilterTags"`
+	Identifier             string             `json:"identifier"`
+	Type                   string             `json:"type"`
+	UID                    int                `json:"uid"`
+	GridSize               int                `json:"gridSize"`
+	GuideGridWid           int                `json:"guideGridWid"`
+	GuideGridHei           int                `json:"guideGridHei"`
+	DisplayOpacity         float64            `json:"displayOpacity"`
+	InactiveOpacity        float64            `json:"inactiveOpacity"`
+	HideInList             bool               `json:"hideInList"`
+	HideFieldsWhenInactive bool               `json:"hideFieldsWhenInactive"`
+	CanSelectWhenInactive  bool               `json:"canSelectWhenInactive"`
+	RenderInWorldView      bool               `json:"renderInWorldView"`
+	PxOffsetX              int                `json:"pxOffsetX"`
+	PxOffsetY              int                `json:"pxOffsetY"`
+	Parallaxfactorx        float64            `json:"parallaxFactorX"`
+	ParallaxfactorY        float64            `json:"parallaxFactorY"`
+	ParallaxScaling        bool               `json:"parallaxScaling"`
+	RequiredTags           []string           `json:"requiredTags"`
+	ExcludedTags           []string           `json:"excludedTags"`
+	IntGridValues          []ldtkIntGridValue `json:"intGridValues"`
+	IntGridValuesGroups    []interface{}      `json:"intGridValuesGroups"`
+	AutoRuleGroups         []interface{}      `json:"autoRuleGroups"`
+	AutoSourceLayerDefUid  interface{}        `json:"autoSourceLayerDefUid"`
+	TilesetDefUid          interface{}        `json:"tilesetDefUid"`
+	TilePivotX             float64            `json:"tilePivotX"`
+	TilePivotY             float64            `json:"tilePivotY"`
+	Doc                    interface{}        `json:"doc"`
+	UiColor                interface{}        `json:"uiColor"`
+	UiFilterTags           []string           `json:"uiFilterTags"`
 }
 
 type ldtkIntGridValue struct {
@@ -108,142 +113,142 @@ type ldtkIntGridValue struct {
 }
 
 type ldtkWriteEntityDef struct {
-	Identifier     string      `json:"identifier"`
-	UID            int         `json:"uid"`
-	Tags           []string    `json:"tags"`
-	ExportToToc    bool        `json:"exportToToc"`
-	AllowOutOfBounds bool      `json:"allowOutOfBounds"`
-	Width          int         `json:"width"`
-	Height         int         `json:"height"`
-	ResizableX     bool        `json:"resizableX"`
-	ResizableY     bool        `json:"resizableY"`
-	KeepAspectRatio bool       `json:"keepAspectRatio"`
-	TileOpacity    float64     `json:"tileOpacity"`
-	FillOpacity    float64     `json:"fillOpacity"`
-	LineOpacity    float64     `json:"lineOpacity"`
-	Hollow         bool        `json:"hollow"`
-	Color          string      `json:"color"`
-	RenderMode     string      `json:"renderMode"`
-	ShowName       bool        `json:"showName"`
-	TilesetId      interface{} `json:"tilesetId"`
-	TileRenderMode string      `json:"tileRenderMode"`
-	TileRect       interface{} `json:"tileRect"`
-	NineSliceBorders []int     `json:"nineSliceBorders"`
-	MaxCount       int         `json:"maxCount"`
-	LimitScope     string      `json:"limitScope"`
-	LimitBehavior  string      `json:"limitBehavior"`
-	PivotX         float64     `json:"pivotX"`
-	PivotY         float64     `json:"pivotY"`
-	FieldDefs      []ldtkFieldDef `json:"fieldDefs"`
-	Doc            interface{} `json:"doc"`
-	UiTileRect     interface{} `json:"uiTileRect"`
+	Identifier       string         `json:"identifier"`
+	UID              int            `json:"uid"`
+	Tags             []string       `json:"tags"`
+	ExportToToc      bool           `json:"exportToToc"`
+	AllowOutOfBounds bool           `json:"allowOutOfBounds"`
+	Width            int            `json:"width"`
+	Height           int            `json:"height"`
+	ResizableX       bool           `json:"resizableX"`
+	ResizableY       bool           `json:"resizableY"`
+	KeepAspectRatio  bool           `json:"keepAspectRatio"`
+	TileOpacity      float64        `json:"tileOpacity"`
+	FillOpacity      float64        `json:"fillOpacity"`
+	LineOpacity      float64        `json:"lineOpacity"`
+	Hollow           bool           `json:"hollow"`
+	Color            string         `json:"color"`
+	RenderMode       string         `json:"renderMode"`
+	ShowName         bool           `json:"showName"`
+	TilesetId        interface{}    `json:"tilesetId"`
+	TileRenderMode   string         `json:"tileRenderMode"`
+	TileRect         interface{}    `json:"tileRect"`
+	NineSliceBorders []int          `json:"nineSliceBorders"`
+	MaxCount         int            `json:"maxCount"`
+	LimitScope       string         `json:"limitScope"`
+	LimitBehavior    string         `json:"limitBehavior"`
+	PivotX           float64        `json:"pivotX"`
+	PivotY           float64        `json:"pivotY"`
+	FieldDefs        []ldtkFieldDef `json:"fieldDefs"`
+	Doc              interface{}    `json:"doc"`
+	UiTileRect       interface{}    `json:"uiTileRect"`
 }
 
 type ldtkFieldDef struct {
-	Identifier   string `json:"identifier"`
-	UID          int    `json:"uid"`
-	InternalType string `json:"type"`   // Haxe enum: "F_String", "F_Float", "F_Int", "F_Bool"
-	DisplayType  string `json:"__type"` // Human-readable: "String", "Float", "Int", "Bool"
-	IsArray      bool   `json:"isArray"`
-	CanBeNull     bool        `json:"canBeNull"`
-	ArrayMinLength interface{} `json:"arrayMinLength"`
-	ArrayMaxLength interface{} `json:"arrayMaxLength"`
-	EditorDisplayMode string  `json:"editorDisplayMode"`
-	EditorDisplayScale float64 `json:"editorDisplayScale"`
-	EditorDisplayPos  string  `json:"editorDisplayPos"`
-	EditorLinkStyle   string  `json:"editorLinkStyle"`
-	ShowInWorld       bool    `json:"showInWorld"`
-	EditorDisplayColor interface{} `json:"editorDisplayColor"`
-	EditorAlwaysShow  bool    `json:"editorAlwaysShow"`
-	EditorCutLongValues bool  `json:"editorCutLongValues"`
-	EditorTextSuffix  interface{} `json:"editorTextSuffix"`
-	EditorTextPrefix  interface{} `json:"editorTextPrefix"`
-	UseForSmartColor  bool    `json:"useForSmartColor"`
-	Min               interface{} `json:"min"`
-	Max               interface{} `json:"max"`
-	Regex             interface{} `json:"regex"`
-	AcceptFileTypes   interface{} `json:"acceptFileTypes"`
-	DefaultOverride   interface{} `json:"defaultOverride"`
-	TextLanguageMode  interface{} `json:"textLanguageMode"`
-	SymmetricalRef    bool    `json:"symmetricalRef"`
-	AutoChainRef      bool    `json:"autoChainRef"`
-	AllowedRefs       string  `json:"allowedRefs"`
+	Identifier           string      `json:"identifier"`
+	UID                  int         `json:"uid"`
+	InternalType         string      `json:"type"`   // Haxe enum: "F_String", "F_Float", "F_Int", "F_Bool"
+	DisplayType          string      `json:"__type"` // Human-readable: "String", "Float", "Int", "Bool"
+	IsArray              bool        `json:"isArray"`
+	CanBeNull            bool        `json:"canBeNull"`
+	ArrayMinLength       interface{} `json:"arrayMinLength"`
+	ArrayMaxLength       interface{} `json:"arrayMaxLength"`
+	EditorDisplayMode    string      `json:"editorDisplayMode"`
+	EditorDisplayScale   float64     `json:"editorDisplayScale"`
+	EditorDisplayPos     string      `json:"editorDisplayPos"`
+	EditorLinkStyle      string      `json:"editorLinkStyle"`
+	ShowInWorld          bool        `json:"showInWorld"`
+	EditorDisplayColor   interface{} `json:"editorDisplayColor"`
+	EditorAlwaysShow     bool        `json:"editorAlwaysShow"`
+	EditorCutLongValues  bool        `json:"editorCutLongValues"`
+	EditorTextSuffix     interface{} `json:"editorTextSuffix"`
+	EditorTextPrefix     interface{} `json:"editorTextPrefix"`
+	UseForSmartColor     bool        `json:"useForSmartColor"`
+	Min                  interface{} `json:"min"`
+	Max                  interface{} `json:"max"`
+	Regex                interface{} `json:"regex"`
+	AcceptFileTypes      interface{} `json:"acceptFileTypes"`
+	DefaultOverride      interface{} `json:"defaultOverride"`
+	TextLanguageMode     interface{} `json:"textLanguageMode"`
+	SymmetricalRef       bool        `json:"symmetricalRef"`
+	AutoChainRef         bool        `json:"autoChainRef"`
+	AllowedRefs          string      `json:"allowedRefs"`
 	AllowedRefsEntityUid interface{} `json:"allowedRefsEntityUid"`
-	AllowedRefTags    []string `json:"allowedRefTags"`
-	TilesetUid        interface{} `json:"tilesetUid"`
-	Doc               interface{} `json:"doc"`
+	AllowedRefTags       []string    `json:"allowedRefTags"`
+	TilesetUid           interface{} `json:"tilesetUid"`
+	Doc                  interface{} `json:"doc"`
 }
 
 type ldtkWriteLevel struct {
-	Identifier     string           `json:"identifier"`
-	Iid            string           `json:"iid"`
-	UID            int              `json:"uid"`
-	WorldX         int              `json:"worldX"`
-	WorldY         int              `json:"worldY"`
-	WorldDepth     int              `json:"worldDepth"`
-	PxWid          int              `json:"pxWid"`
-	PxHei          int              `json:"pxHei"`
-	BgColor        interface{}      `json:"bgColor"`
-	BgRelPath      interface{}      `json:"bgRelPath"`
-	ExternalRelPath interface{}     `json:"externalRelPath"`
-	FieldInstances []interface{}    `json:"fieldInstances"`
-	BgColorFull    string           `json:"__bgColor"`
-	BgPos          interface{}      `json:"__bgPos"`
-	Neighbours     []interface{}    `json:"__neighbours"`
-	SmartColor     string           `json:"__smartColor"`
-	LayerInstances []ldtkWriteLayer `json:"layerInstances"`
+	Identifier      string           `json:"identifier"`
+	Iid             string           `json:"iid"`
+	UID             int              `json:"uid"`
+	WorldX          int              `json:"worldX"`
+	WorldY          int              `json:"worldY"`
+	WorldDepth      int              `json:"worldDepth"`
+	PxWid           int              `json:"pxWid"`
+	PxHei           int              `json:"pxHei"`
+	BgColor         interface{}      `json:"bgColor"`
+	BgRelPath       interface{}      `json:"bgRelPath"`
+	ExternalRelPath interface{}      `json:"externalRelPath"`
+	FieldInstances  []interface{}    `json:"fieldInstances"`
+	BgColorFull     string           `json:"__bgColor"`
+	BgPos           interface{}      `json:"__bgPos"`
+	Neighbours      []interface{}    `json:"__neighbours"`
+	SmartColor      string           `json:"__smartColor"`
+	LayerInstances  []ldtkWriteLayer `json:"layerInstances"`
 }
 
 // ldtkWriteLayer field tags mirror ldtkLayerInstance in ldtk.go.
 type ldtkWriteLayer struct {
-	Identifier     string            `json:"__identifier"`
-	Type           string            `json:"__type"`
-	GridSize       int               `json:"__gridSize"`
-	CWid           int               `json:"__cWid"`
-	CHei           int               `json:"__cHei"`
-	Opacity        float64           `json:"__opacity"`
-	PxTotalOffsetX int               `json:"__pxTotalOffsetX"`
-	PxTotalOffsetY int               `json:"__pxTotalOffsetY"`
-	TilesetUID     interface{}       `json:"__tilesetDefUid"`
-	TilesetPath    interface{}       `json:"__tilesetRelPath"`
-	Iid            string            `json:"iid"`
-	LevelId        int               `json:"levelId"`
-	LayerDefUid    int               `json:"layerDefUid"`
-	PxOffsetX      int               `json:"pxOffsetX"`
-	PxOffsetY      int               `json:"pxOffsetY"`
-	Visible        bool              `json:"visible"`
-	OptionalRules  []interface{}     `json:"optionalRules"`
-	IntGridCSV     []int             `json:"intGridCsv"`
-	AutoTiles      []interface{}     `json:"autoLayerTiles"`
-	Seed           int               `json:"seed"`
-	OverrideTileset interface{}      `json:"overrideTilesetUid"`
-	GridTiles      []interface{}     `json:"gridTiles"`
-	Entities       []ldtkWriteEntity `json:"entityInstances"`
+	Identifier      string            `json:"__identifier"`
+	Type            string            `json:"__type"`
+	GridSize        int               `json:"__gridSize"`
+	CWid            int               `json:"__cWid"`
+	CHei            int               `json:"__cHei"`
+	Opacity         float64           `json:"__opacity"`
+	PxTotalOffsetX  int               `json:"__pxTotalOffsetX"`
+	PxTotalOffsetY  int               `json:"__pxTotalOffsetY"`
+	TilesetUID      interface{}       `json:"__tilesetDefUid"`
+	TilesetPath     interface{}       `json:"__tilesetRelPath"`
+	Iid             string            `json:"iid"`
+	LevelId         int               `json:"levelId"`
+	LayerDefUid     int               `json:"layerDefUid"`
+	PxOffsetX       int               `json:"pxOffsetX"`
+	PxOffsetY       int               `json:"pxOffsetY"`
+	Visible         bool              `json:"visible"`
+	OptionalRules   []interface{}     `json:"optionalRules"`
+	IntGridCSV      []int             `json:"intGridCsv"`
+	AutoTiles       []interface{}     `json:"autoLayerTiles"`
+	Seed            int               `json:"seed"`
+	OverrideTileset interface{}       `json:"overrideTilesetUid"`
+	GridTiles       []interface{}     `json:"gridTiles"`
+	Entities        []ldtkWriteEntity `json:"entityInstances"`
 }
 
 // ldtkWriteEntity field tags mirror ldtkEntityInst in ldtk.go.
 type ldtkWriteEntity struct {
-	Identifier  string           `json:"__identifier"`
-	Grid        [2]int           `json:"__grid"`
-	Pivot       [2]float64       `json:"__pivot"`
-	Tags        []string         `json:"__tags"`
-	Tile        interface{}      `json:"__tile"`
-	SmartColor  string           `json:"__smartColor"`
-	Iid         string           `json:"iid"`
-	Width       int              `json:"width"`
-	Height      int              `json:"height"`
-	DefUid      int              `json:"defUid"`
-	PX          [2]int           `json:"px"`
-	Fields      []ldtkWriteField `json:"fieldInstances"`
+	Identifier string           `json:"__identifier"`
+	Grid       [2]int           `json:"__grid"`
+	Pivot      [2]float64       `json:"__pivot"`
+	Tags       []string         `json:"__tags"`
+	Tile       interface{}      `json:"__tile"`
+	SmartColor string           `json:"__smartColor"`
+	Iid        string           `json:"iid"`
+	Width      int              `json:"width"`
+	Height     int              `json:"height"`
+	DefUid     int              `json:"defUid"`
+	PX         [2]int           `json:"px"`
+	Fields     []ldtkWriteField `json:"fieldInstances"`
 }
 
 // ldtkWriteField field tags mirror ldtkField in ldtk.go.
 type ldtkWriteField struct {
-	Identifier string      `json:"__identifier"`
-	Type       string      `json:"__type"`
-	Value      interface{} `json:"__value"`
-	Tile       interface{} `json:"__tile"`
-	DefUid     int         `json:"defUid"`
+	Identifier string        `json:"__identifier"`
+	Type       string        `json:"__type"`
+	Value      interface{}   `json:"__value"`
+	Tile       interface{}   `json:"__tile"`
+	DefUid     int           `json:"defUid"`
 	RealEditor []interface{} `json:"realEditorValues"`
 }
 
@@ -251,13 +256,13 @@ type ldtkWriteField struct {
 
 // LDtkWriteLevel is the caller-facing description of one level.
 type LDtkWriteLevel struct {
-	ID         string     // level identifier (e.g. "room_01")
-	GridW      int        // width  in blocks
-	GridH      int        // height in blocks
-	GridSize   int        // pixels per block (default 16)
+	ID            string   // level identifier (e.g. "room_01")
+	GridW         int      // width  in blocks
+	GridH         int      // height in blocks
+	GridSize      int      // pixels per block (default 16)
 	SolidCells    [][2]int // [col, row] pairs that should be solid (value 1)
 	PlatformCells [][2]int // [col, row] pairs that are one-way platforms (value 3)
-	Entities   []LDtkWriteEntity
+	Entities      []LDtkWriteEntity
 }
 
 // LDtkWriteEntity is a game object placed in the Entities layer.
@@ -281,11 +286,11 @@ const (
 	uidLayerCollision = 2
 	uidLayerEntities  = 3
 
-	uidEntityPlayer    = 10
-	uidEntityRat       = 11
-	uidEntityJumpLink  = 12
-	uidEntityReveal    = 13
-	uidEntityRift      = 14
+	uidEntityPlayer          = 10
+	uidEntityRat             = 11
+	uidEntityJumpLink        = 12
+	uidEntityReveal          = 13
+	uidEntityRift            = 14
 	uidEntityMiniBoss        = 15 // level-1 boss encounter (ground)
 	uidEntityBoss            = 16 // level-2 boss encounter (ground)
 	uidEntitySuperBoss       = 17 // level-3 boss encounter (ground)
@@ -315,22 +320,22 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 
 	// Build layer definitions (shared across all levels).
 	collisionLayerDef := ldtkWriteLayerDef{
-		Identifier:      "Collision",
-		Type:            "IntGrid",
-		UID:             uidLayerCollision,
-		GridSize:        gs,
-		GuideGridWid:    0,
-		GuideGridHei:    0,
-		DisplayOpacity:  1,
-		InactiveOpacity: 0.6,
-		HideInList:      false,
+		Identifier:             "Collision",
+		Type:                   "IntGrid",
+		UID:                    uidLayerCollision,
+		GridSize:               gs,
+		GuideGridWid:           0,
+		GuideGridHei:           0,
+		DisplayOpacity:         1,
+		InactiveOpacity:        0.6,
+		HideInList:             false,
 		HideFieldsWhenInactive: true,
 		CanSelectWhenInactive:  true,
 		RenderInWorldView:      true,
-		RequiredTags:    []string{},
-		ExcludedTags:    []string{},
+		RequiredTags:           []string{},
+		ExcludedTags:           []string{},
 		IntGridValues: []ldtkIntGridValue{
-			{Value: 1, Identifier: "solid",    Color: "#826B4E", Tile: nil, GroupUid: 0},
+			{Value: 1, Identifier: "solid", Color: "#826B4E", Tile: nil, GroupUid: 0},
 			{Value: 3, Identifier: "platform", Color: "#5BAA72", Tile: nil, GroupUid: 0},
 		},
 		IntGridValuesGroups: []interface{}{},
@@ -339,24 +344,24 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 	}
 
 	entitiesLayerDef := ldtkWriteLayerDef{
-		Identifier:      "Entities",
-		Type:            "Entities",
-		UID:             uidLayerEntities,
-		GridSize:        gs,
-		GuideGridWid:    0,
-		GuideGridHei:    0,
-		DisplayOpacity:  1,
-		InactiveOpacity: 0.6,
-		HideInList:      false,
+		Identifier:             "Entities",
+		Type:                   "Entities",
+		UID:                    uidLayerEntities,
+		GridSize:               gs,
+		GuideGridWid:           0,
+		GuideGridHei:           0,
+		DisplayOpacity:         1,
+		InactiveOpacity:        0.6,
+		HideInList:             false,
 		HideFieldsWhenInactive: true,
 		CanSelectWhenInactive:  true,
 		RenderInWorldView:      true,
-		RequiredTags:    []string{},
-		ExcludedTags:    []string{},
-		IntGridValues:   []ldtkIntGridValue{},
-		IntGridValuesGroups: []interface{}{},
-		AutoRuleGroups:      []interface{}{},
-		UiFilterTags:        []string{},
+		RequiredTags:           []string{},
+		ExcludedTags:           []string{},
+		IntGridValues:          []ldtkIntGridValue{},
+		IntGridValuesGroups:    []interface{}{},
+		AutoRuleGroups:         []interface{}{},
+		UiFilterTags:           []string{},
 	}
 
 	// Entity definitions.
@@ -368,15 +373,15 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 		makeEntityDef("Rift", uidEntityRift, "#FF4444", 32, 32),
 		// Boss encounter markers — colours match maprenderer.go bossSpawnColors.
 		// Ground bosses: filled squares.
-		makeEntityDef("MiniBoss",        uidEntityMiniBoss,        "#B482FF", 16, 16), // soft lavender
-		makeEntityDef("Boss",            uidEntityBoss,            "#FF5050", 16, 16), // vivid crimson
-		makeEntityDef("SuperBoss",       uidEntitySuperBoss,       "#FFC832", 16, 16), // molten gold
+		makeEntityDef("MiniBoss", uidEntityMiniBoss, "#B482FF", 16, 16),   // soft lavender
+		makeEntityDef("Boss", uidEntityBoss, "#FF5050", 16, 16),           // vivid crimson
+		makeEntityDef("SuperBoss", uidEntitySuperBoss, "#FFC832", 16, 16), // molten gold
 		// Flying bosses: same hue but lighter tint (diamond in the game renderer).
-		makeEntityDef("FlyingMiniBoss",  uidEntityFlyingMiniBoss,  "#D8B8FF", 16, 16), // pale lavender
-		makeEntityDef("FlyingBoss",      uidEntityFlyingBoss,      "#FF9090", 16, 16), // pale crimson
+		makeEntityDef("FlyingMiniBoss", uidEntityFlyingMiniBoss, "#D8B8FF", 16, 16),   // pale lavender
+		makeEntityDef("FlyingBoss", uidEntityFlyingBoss, "#FF9090", 16, 16),           // pale crimson
 		makeEntityDef("FlyingSuperBoss", uidEntityFlyingSuperBoss, "#FFE882", 16, 16), // pale gold
 		// Zone overlays — resizable rectangles drawn on the map.
-		makeZoneEntityDef("RiftZone",   uidEntityRiftZone,   "#8844DD", 0.15, true),  // dim purple, hollow
+		makeZoneEntityDef("RiftZone", uidEntityRiftZone, "#8844DD", 0.15, true),      // dim purple, hollow
 		makeZoneEntityDef("PortalZone", uidEntityPortalZone, "#DDBB00", 0.20, false), // gold, semi-filled
 	}
 	// Add field defs to JumpLink (index 2).
@@ -488,7 +493,7 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 				Tags:       []string{},
 				Tile:       nil,
 				SmartColor: "#FFFFFF",
-				Iid:        fakeIID(i*1000+j+100),
+				Iid:        fakeIID(i*1000 + j + 100),
 				Width:      ent.W,
 				Height:     ent.H,
 				DefUid:     defUID,
@@ -503,7 +508,7 @@ func WriteLDtkFile(path string, levels []LDtkWriteLevel) error {
 			Identifier:      lvl.ID,
 			Iid:             fakeIID(i + 1),
 			UID:             levelUID,
-			WorldX:          i * (gw * levelGs + 32), // side by side with gap
+			WorldX:          i * (gw*levelGs + 32), // side by side with gap
 			WorldY:          0,
 			WorldDepth:      0,
 			PxWid:           gw * levelGs,
@@ -636,33 +641,33 @@ func fakeIID(n int) string {
 
 func makeEntityDef(id string, uid int, color string, w, h int) ldtkWriteEntityDef {
 	return ldtkWriteEntityDef{
-		Identifier:      id,
-		UID:             uid,
-		Tags:            []string{},
-		ExportToToc:     false,
+		Identifier:       id,
+		UID:              uid,
+		Tags:             []string{},
+		ExportToToc:      false,
 		AllowOutOfBounds: false,
-		Width:           w,
-		Height:          h,
-		ResizableX:      true,
-		ResizableY:      true,
-		KeepAspectRatio: false,
-		TileOpacity:     1,
-		FillOpacity:     0.08,
-		LineOpacity:     1,
-		Hollow:          false,
-		Color:           color,
-		RenderMode:      "Rectangle",
-		ShowName:        true,
-		TilesetId:       nil,
-		TileRenderMode:  "FitInside",
-		TileRect:        nil,
+		Width:            w,
+		Height:           h,
+		ResizableX:       true,
+		ResizableY:       true,
+		KeepAspectRatio:  false,
+		TileOpacity:      1,
+		FillOpacity:      0.08,
+		LineOpacity:      1,
+		Hollow:           false,
+		Color:            color,
+		RenderMode:       "Rectangle",
+		ShowName:         true,
+		TilesetId:        nil,
+		TileRenderMode:   "FitInside",
+		TileRect:         nil,
 		NineSliceBorders: []int{},
-		MaxCount:        0,
-		LimitScope:      "PerLevel",
-		LimitBehavior:   "MoveLastOne",
-		PivotX:          0.5,
-		PivotY:          1,
-		FieldDefs:       []ldtkFieldDef{},
+		MaxCount:         0,
+		LimitScope:       "PerLevel",
+		LimitBehavior:    "MoveLastOne",
+		PivotX:           0.5,
+		PivotY:           1,
+		FieldDefs:        []ldtkFieldDef{},
 	}
 }
 
@@ -685,23 +690,23 @@ func makeZoneEntityDef(id string, uid int, color string, fillOpacity float64, ho
 // internalType ("F_String" etc.) is derived automatically.
 func makeFieldDef(id string, uid int, displayType string) ldtkFieldDef {
 	return ldtkFieldDef{
-		Identifier:   id,
-		UID:          uid,
-		InternalType: "F_" + displayType, // LDtk Haxe enum constructor
-		DisplayType:  displayType,
-		IsArray:      false,
-		CanBeNull:        true,
-		ArrayMinLength:   nil,
-		ArrayMaxLength:   nil,
-		EditorDisplayMode: "Hidden",
-		EditorDisplayScale: 1,
-		EditorDisplayPos:   "Above",
-		EditorLinkStyle:    "CurvedArrow",
-		ShowInWorld:        false,
-		EditorAlwaysShow:   false,
+		Identifier:          id,
+		UID:                 uid,
+		InternalType:        "F_" + displayType, // LDtk Haxe enum constructor
+		DisplayType:         displayType,
+		IsArray:             false,
+		CanBeNull:           true,
+		ArrayMinLength:      nil,
+		ArrayMaxLength:      nil,
+		EditorDisplayMode:   "Hidden",
+		EditorDisplayScale:  1,
+		EditorDisplayPos:    "Above",
+		EditorLinkStyle:     "CurvedArrow",
+		ShowInWorld:         false,
+		EditorAlwaysShow:    false,
 		EditorCutLongValues: true,
-		UseForSmartColor:   false,
-		AllowedRefs:        "Any",
-		AllowedRefTags:     []string{},
+		UseForSmartColor:    false,
+		AllowedRefs:         "Any",
+		AllowedRefTags:      []string{},
 	}
 }

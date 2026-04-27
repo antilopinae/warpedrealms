@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Warped Realms. All rights reserved.
+// This source code is proprietary and confidential.
+// Unauthorized copying or cloning of game mechanics is strictly prohibited.
+// See LICENSE file in the project root for full license details.
+
 package clientapp
 
 import (
@@ -99,8 +104,8 @@ type Assets struct {
 	Layers      map[string][]LayerSprite
 	Composites  map[string]CompositeAsset
 	Backgrounds map[string]BackgroundAsset
-	TileMaps    map[string]*world.MapData   // keyed by TemplateID e.g. "map_1.tmx"
-	TileImages  map[string]*ebiten.Image    // keyed by resolved tileset image path
+	TileMaps    map[string]*world.MapData // keyed by TemplateID e.g. "map_1.tmx"
+	TileImages  map[string]*ebiten.Image  // keyed by resolved tileset image path
 	TileStyles  map[string]TileStyleAsset
 	UI          UIAssets
 	FX          FXAssets

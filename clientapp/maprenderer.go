@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Warped Realms. All rights reserved.
+// This source code is proprietary and confidential.
+// Unauthorized copying or cloning of game mechanics is strictly prohibited.
+// See LICENSE file in the project root for full license details.
+
 package clientapp
 
 import (
@@ -719,8 +724,8 @@ func bossSpawnColors(level int, alpha float64) (fill, rim color.RGBA) {
 // can immediately recognise pass-through surfaces regardless of location theme.
 func platformOneWayColors(alpha float64) (fill, rim color.RGBA) {
 	a := uint8(255 * alpha)
-	fill = color.RGBA{30, 110, 90, a}  // dark teal body
-	rim = color.RGBA{80, 220, 160, a}  // bright mint top edge
+	fill = color.RGBA{30, 110, 90, a} // dark teal body
+	rim = color.RGBA{80, 220, 160, a} // bright mint top edge
 	return fill, rim
 }
 
