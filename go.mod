@@ -15,4 +15,5 @@ require (
 	github.com/jezek/xgb v1.3.1 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 )

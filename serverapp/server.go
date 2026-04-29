@@ -212,19 +212,29 @@ func (p *Peer) readLoop() {
 		if err := p.conn.ReadJSON(&message); err != nil {
 			return
 		}
-		switch message.Type {
-		case "input":
-			if message.Input != nil {
-				p.room.EnqueueInputs(p.playerID, message.Input.Commands)
+		switch payload := message.Payload.(type) {
+		case shared.ClientInputPayload:
+			p.room.EnqueueInputs(p.playerID, payload.Commands)
+		case *shared.ClientInputPayload:
+			if payload != nil {
+				p.room.EnqueueInputs(p.playerID, payload.Commands)
 			}
-		case "ping":
-			if message.Ping == nil {
+		case shared.ClientPingPayload:
+			trySend(p.send, shared.ServerMessage{
+				Type: "pong",
+				Pong: &shared.PongMessage{
+					ClientTime: payload.ClientTime,
+					ServerTime: p.room.serverTime(),
+				},
+			})
+		case *shared.ClientPingPayload:
+			if payload == nil {
 				continue
 			}
 			trySend(p.send, shared.ServerMessage{
 				Type: "pong",
 				Pong: &shared.PongMessage{
-					ClientTime: message.Ping.ClientTime,
+					ClientTime: payload.ClientTime,
 					ServerTime: p.room.serverTime(),
 				},
 			})

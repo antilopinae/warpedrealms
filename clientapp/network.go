@@ -137,21 +137,15 @@ func (c *NetworkClient) SendInputs(commands []shared.InputCommand) error {
 	}
 	copyBatch := make([]shared.InputCommand, len(commands))
 	copy(copyBatch, commands)
-	return c.write(shared.ClientMessage{
-		Type: "input",
-		Input: &shared.InputBatch{
-			Commands: copyBatch,
-		},
-	})
+	return c.write(shared.NewClientInputMessage(shared.InputBatch{
+		Commands: copyBatch,
+	}))
 }
 
 func (c *NetworkClient) SendPing(clientTime float64) error {
-	return c.write(shared.ClientMessage{
-		Type: "ping",
-		Ping: &shared.PingMessage{
-			ClientTime: clientTime,
-		},
-	})
+	return c.write(shared.NewClientPingMessage(shared.PingMessage{
+		ClientTime: clientTime,
+	}))
 }
 
 func (c *NetworkClient) Close() {
