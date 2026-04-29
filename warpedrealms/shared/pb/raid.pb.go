@@ -1597,27 +1597,27 @@ func (x *InputBatch) GetCommands() []*InputCommand {
 	return nil
 }
 
-type ClientPing struct {
+type PingMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ClientTime    float64                `protobuf:"fixed64,1,opt,name=client_time,json=clientTime,proto3" json:"client_time,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ClientPing) Reset() {
-	*x = ClientPing{}
+func (x *PingMessage) Reset() {
+	*x = PingMessage{}
 	mi := &file_proto_raid_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ClientPing) String() string {
+func (x *PingMessage) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ClientPing) ProtoMessage() {}
+func (*PingMessage) ProtoMessage() {}
 
-func (x *ClientPing) ProtoReflect() protoreflect.Message {
+func (x *PingMessage) ProtoReflect() protoreflect.Message {
 	mi := &file_proto_raid_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1629,12 +1629,12 @@ func (x *ClientPing) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ClientPing.ProtoReflect.Descriptor instead.
-func (*ClientPing) Descriptor() ([]byte, []int) {
+// Deprecated: Use PingMessage.ProtoReflect.Descriptor instead.
+func (*PingMessage) Descriptor() ([]byte, []int) {
 	return file_proto_raid_proto_rawDescGZIP(), []int{16}
 }
 
-func (x *ClientPing) GetClientTime() float64 {
+func (x *PingMessage) GetClientTime() float64 {
 	if x != nil {
 		return x.ClientTime
 	}
@@ -1698,7 +1698,7 @@ func (x *ClientMessage) GetInput() *InputBatch {
 	return nil
 }
 
-func (x *ClientMessage) GetPing() *ClientPing {
+func (x *ClientMessage) GetPing() *PingMessage {
 	if x != nil {
 		if x, ok := x.Payload.(*ClientMessage_Ping); ok {
 			return x.Ping
@@ -1716,7 +1716,7 @@ type ClientMessage_Input struct {
 }
 
 type ClientMessage_Ping struct {
-	Ping *ClientPing `protobuf:"bytes,2,opt,name=ping,proto3,oneof"`
+	Ping *PingMessage `protobuf:"bytes,2,opt,name=ping,proto3,oneof"`
 }
 
 func (*ClientMessage_Input) isClientMessage_Payload() {}
@@ -1776,12 +1776,14 @@ func (x *PongMessage) GetServerTime() float64 {
 }
 
 type ServerMessage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
-	Welcome       *WelcomeMessage        `protobuf:"bytes,2,opt,name=welcome,proto3" json:"welcome,omitempty"`
-	Snapshot      *SnapshotMessage       `protobuf:"bytes,3,opt,name=snapshot,proto3" json:"snapshot,omitempty"`
-	Pong          *PongMessage           `protobuf:"bytes,4,opt,name=pong,proto3" json:"pong,omitempty"`
-	Error         string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*ServerMessage_Welcome
+	//	*ServerMessage_Snapshot
+	//	*ServerMessage_Pong
+	//	*ServerMessage_Error
+	Payload       isServerMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1816,40 +1818,76 @@ func (*ServerMessage) Descriptor() ([]byte, []int) {
 	return file_proto_raid_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *ServerMessage) GetType() string {
+func (x *ServerMessage) GetPayload() isServerMessage_Payload {
 	if x != nil {
-		return x.Type
+		return x.Payload
 	}
-	return ""
+	return nil
 }
 
 func (x *ServerMessage) GetWelcome() *WelcomeMessage {
 	if x != nil {
-		return x.Welcome
+		if x, ok := x.Payload.(*ServerMessage_Welcome); ok {
+			return x.Welcome
+		}
 	}
 	return nil
 }
 
 func (x *ServerMessage) GetSnapshot() *SnapshotMessage {
 	if x != nil {
-		return x.Snapshot
+		if x, ok := x.Payload.(*ServerMessage_Snapshot); ok {
+			return x.Snapshot
+		}
 	}
 	return nil
 }
 
 func (x *ServerMessage) GetPong() *PongMessage {
 	if x != nil {
-		return x.Pong
+		if x, ok := x.Payload.(*ServerMessage_Pong); ok {
+			return x.Pong
+		}
 	}
 	return nil
 }
 
 func (x *ServerMessage) GetError() string {
 	if x != nil {
-		return x.Error
+		if x, ok := x.Payload.(*ServerMessage_Error); ok {
+			return x.Error
+		}
 	}
 	return ""
 }
+
+type isServerMessage_Payload interface {
+	isServerMessage_Payload()
+}
+
+type ServerMessage_Welcome struct {
+	Welcome *WelcomeMessage `protobuf:"bytes,1,opt,name=welcome,proto3,oneof"`
+}
+
+type ServerMessage_Snapshot struct {
+	Snapshot *SnapshotMessage `protobuf:"bytes,2,opt,name=snapshot,proto3,oneof"`
+}
+
+type ServerMessage_Pong struct {
+	Pong *PongMessage `protobuf:"bytes,3,opt,name=pong,proto3,oneof"`
+}
+
+type ServerMessage_Error struct {
+	Error string `protobuf:"bytes,4,opt,name=error,proto3,oneof"`
+}
+
+func (*ServerMessage_Welcome) isServerMessage_Payload() {}
+
+func (*ServerMessage_Snapshot) isServerMessage_Payload() {}
+
+func (*ServerMessage_Pong) isServerMessage_Payload() {}
+
+func (*ServerMessage_Error) isServerMessage_Payload() {}
 
 var File_proto_raid_proto protoreflect.FileDescriptor
 
@@ -2034,26 +2072,25 @@ const file_proto_raid_proto_rawDesc = "" +
 	"clientTime\"<\n" +
 	"\n" +
 	"InputBatch\x12.\n" +
-	"\bcommands\x18\x01 \x03(\v2\x12.raid.InputCommandR\bcommands\"-\n" +
-	"\n" +
-	"ClientPing\x12\x1f\n" +
+	"\bcommands\x18\x01 \x03(\v2\x12.raid.InputCommandR\bcommands\".\n" +
+	"\vPingMessage\x12\x1f\n" +
 	"\vclient_time\x18\x01 \x01(\x01R\n" +
-	"clientTime\"l\n" +
+	"clientTime\"m\n" +
 	"\rClientMessage\x12(\n" +
-	"\x05input\x18\x01 \x01(\v2\x10.raid.InputBatchH\x00R\x05input\x12&\n" +
-	"\x04ping\x18\x02 \x01(\v2\x10.raid.ClientPingH\x00R\x04pingB\t\n" +
+	"\x05input\x18\x01 \x01(\v2\x10.raid.InputBatchH\x00R\x05input\x12'\n" +
+	"\x04ping\x18\x02 \x01(\v2\x11.raid.PingMessageH\x00R\x04pingB\t\n" +
 	"\apayload\"O\n" +
 	"\vPongMessage\x12\x1f\n" +
 	"\vclient_time\x18\x01 \x01(\x01R\n" +
 	"clientTime\x12\x1f\n" +
 	"\vserver_time\x18\x02 \x01(\x01R\n" +
-	"serverTime\"\xc3\x01\n" +
-	"\rServerMessage\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\tR\x04type\x12.\n" +
-	"\awelcome\x18\x02 \x01(\v2\x14.raid.WelcomeMessageR\awelcome\x121\n" +
-	"\bsnapshot\x18\x03 \x01(\v2\x15.raid.SnapshotMessageR\bsnapshot\x12%\n" +
-	"\x04pong\x18\x04 \x01(\v2\x11.raid.PongMessageR\x04pong\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05errorB\x1bZ\x19warpedrealms/shared/pb;pbb\x06proto3"
+	"serverTime\"\xc2\x01\n" +
+	"\rServerMessage\x120\n" +
+	"\awelcome\x18\x01 \x01(\v2\x14.raid.WelcomeMessageH\x00R\awelcome\x123\n" +
+	"\bsnapshot\x18\x02 \x01(\v2\x15.raid.SnapshotMessageH\x00R\bsnapshot\x12'\n" +
+	"\x04pong\x18\x03 \x01(\v2\x11.raid.PongMessageH\x00R\x04pong\x12\x16\n" +
+	"\x05error\x18\x04 \x01(\tH\x00R\x05errorB\t\n" +
+	"\apayloadB\x1bZ\x19warpedrealms/shared/pb;pbb\x06proto3"
 
 var (
 	file_proto_raid_proto_rawDescOnce sync.Once
@@ -2085,7 +2122,7 @@ var file_proto_raid_proto_goTypes = []any{
 	(*WelcomeMessage)(nil),   // 13: raid.WelcomeMessage
 	(*InputCommand)(nil),     // 14: raid.InputCommand
 	(*InputBatch)(nil),       // 15: raid.InputBatch
-	(*ClientPing)(nil),       // 16: raid.ClientPing
+	(*PingMessage)(nil),      // 16: raid.PingMessage
 	(*ClientMessage)(nil),    // 17: raid.ClientMessage
 	(*PongMessage)(nil),      // 18: raid.PongMessage
 	(*ServerMessage)(nil),    // 19: raid.ServerMessage
@@ -2123,7 +2160,7 @@ var file_proto_raid_proto_depIdxs = []int32{
 	11, // 29: raid.SnapshotMessage.raid:type_name -> raid.RaidState
 	14, // 30: raid.InputBatch.commands:type_name -> raid.InputCommand
 	15, // 31: raid.ClientMessage.input:type_name -> raid.InputBatch
-	16, // 32: raid.ClientMessage.ping:type_name -> raid.ClientPing
+	16, // 32: raid.ClientMessage.ping:type_name -> raid.PingMessage
 	13, // 33: raid.ServerMessage.welcome:type_name -> raid.WelcomeMessage
 	12, // 34: raid.ServerMessage.snapshot:type_name -> raid.SnapshotMessage
 	18, // 35: raid.ServerMessage.pong:type_name -> raid.PongMessage
@@ -2142,6 +2179,12 @@ func file_proto_raid_proto_init() {
 	file_proto_raid_proto_msgTypes[17].OneofWrappers = []any{
 		(*ClientMessage_Input)(nil),
 		(*ClientMessage_Ping)(nil),
+	}
+	file_proto_raid_proto_msgTypes[19].OneofWrappers = []any{
+		(*ServerMessage_Welcome)(nil),
+		(*ServerMessage_Snapshot)(nil),
+		(*ServerMessage_Pong)(nil),
+		(*ServerMessage_Error)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

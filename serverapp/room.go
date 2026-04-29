@@ -27,6 +27,7 @@ type Peer struct {
 	conn       *websocket.Conn
 	send       chan shared.ServerMessage
 	room       *RaidRoom
+	useProto   bool
 }
 
 type RaidRoom struct {

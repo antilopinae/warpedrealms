@@ -46,12 +46,12 @@ func ClientMessageToPB(message shared.ClientMessage) (*pb.ClientMessage, error) 
 		}
 		return &pb.ClientMessage{Payload: &pb.ClientMessage_Input{Input: InputBatchToPB(payload.InputBatch)}}, nil
 	case shared.ClientPingPayload:
-		return &pb.ClientMessage{Payload: &pb.ClientMessage_Ping{Ping: &pb.ClientPing{ClientTime: payload.ClientTime}}}, nil
+		return &pb.ClientMessage{Payload: &pb.ClientMessage_Ping{Ping: &pb.PingMessage{ClientTime: payload.ClientTime}}}, nil
 	case *shared.ClientPingPayload:
 		if payload == nil {
 			return &pb.ClientMessage{}, nil
 		}
-		return &pb.ClientMessage{Payload: &pb.ClientMessage_Ping{Ping: &pb.ClientPing{ClientTime: payload.ClientTime}}}, nil
+		return &pb.ClientMessage{Payload: &pb.ClientMessage_Ping{Ping: &pb.PingMessage{ClientTime: payload.ClientTime}}}, nil
 	default:
 		return nil, fmt.Errorf("unsupported client payload %T", message.Payload)
 	}

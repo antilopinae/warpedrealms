@@ -126,21 +126,22 @@ message InputCommand {
 }
 
 message InputBatch { repeated InputCommand commands = 1; }
-message ClientPing { double client_time = 1; }
+message PingMessage { double client_time = 1; }
 
 message ClientMessage {
   oneof payload {
     InputBatch input = 1;
-    ClientPing ping = 2;
+    PingMessage ping = 2;
   }
 }
 
 message PongMessage { double client_time = 1; double server_time = 2; }
 
 message ServerMessage {
-  string type = 1;
-  WelcomeMessage welcome = 2;
-  SnapshotMessage snapshot = 3;
-  PongMessage pong = 4;
-  string error = 5;
+  oneof payload {
+    WelcomeMessage welcome = 1;
+    SnapshotMessage snapshot = 2;
+    PongMessage pong = 3;
+    string error = 4;
+  }
 }
