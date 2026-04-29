@@ -15,9 +15,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"google.golang.org/protobuf/proto"
 
 	"warpedrealms/content"
 	"warpedrealms/shared"
+	"warpedrealms/shared/protocolpb"
+	"warpedrealms/warpedrealms/shared/pb"
 )
 
 type Server struct {
@@ -188,6 +191,7 @@ func (s *Server) handleWebSocket(writer http.ResponseWriter, request *http.Reque
 		classID:    classID,
 		conn:       conn,
 		send:       make(chan shared.ServerMessage, 8),
+		useProto:   request.URL.Query().Get("proto") == "1",
 		room:       room,
 	}
 
@@ -208,10 +212,30 @@ func (p *Peer) readLoop() {
 	}()
 
 	for {
-		var message shared.ClientMessage
-		if err := p.conn.ReadJSON(&message); err != nil {
+		frameType, payload, err := p.conn.ReadMessage()
+		if err != nil {
 			return
 		}
+		if frameType != websocket.BinaryMessage {
+			if !p.useProto {
+				continue
+			}
+			return
+		}
+		var wire pb.ClientMessage
+		if err := proto.Unmarshal(payload, &wire); err != nil {
+			return
+		}
+		message := shared.ClientMessage{}
+		switch pl := wire.Payload.(type) {
+		case *pb.ClientMessage_Input:
+			message = shared.NewClientInputMessage(protocolpb.InputBatchFromPB(pl.Input))
+		case *pb.ClientMessage_Ping:
+			message = shared.NewClientPingMessage(shared.PingMessage{ClientTime: pl.Ping.ClientTime})
+		default:
+			continue
+		}
+
 		switch payload := message.Payload.(type) {
 		case shared.ClientInputPayload:
 			p.room.EnqueueInputs(p.playerID, payload.Commands)
@@ -249,7 +273,21 @@ func (p *Peer) writeLoop() {
 
 	for message := range p.send {
 		_ = p.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if err := p.conn.WriteJSON(message); err != nil {
+		if !p.useProto {
+			if err := p.conn.WriteJSON(message); err != nil {
+				return
+			}
+			continue
+		}
+		pbMsg, err := protocolpb.ServerMessageToPB(message)
+		if err != nil {
+			return
+		}
+		payload, err := proto.Marshal(pbMsg)
+		if err != nil {
+			return
+		}
+		if err := p.conn.WriteMessage(websocket.BinaryMessage, payload); err != nil {
 			return
 		}
 	}

@@ -55,7 +55,36 @@ message LootState {
 message ExitState { string id = 1; string room_id = 2; string label = 3; Rect area = 4; string assigned_player_id = 5; }
 message PlacedAssetState { string id = 1; string profile_id = 2; string room_id = 3; Vec2 position = 4; double scale = 5; Vec2 draw_offset = 6; string layer = 7; double alpha = 8; Rect bounds = 9; }
 message JumpLinkState { string id = 1; string room_id = 2; string target_room_id = 3; string label = 4; Rect area = 5; Vec2 arrival = 6; }
-message RoomState { string id = 1; string name = 2; string zone = 3; Rect bounds = 4; repeated Rect solids = 5; repeated Rect one_way_platforms = 6; repeated ExitState exits = 7; repeated JumpLinkState jump_links = 8; repeated PlacedAssetState assets = 9; }
+message BossSpawn { double x = 1; double y = 2; int32 level = 3; bool flying = 4; }
+message RiftState { string id = 1; string room_id = 2; string target_room_id = 3; Rect area = 4; Vec2 arrival = 5; string kind = 6; int32 capacity = 7; int32 used_count = 8; }
+message RoomState {
+  string id = 1;
+  string name = 2;
+  string biome = 3;
+  Rect bounds = 4;
+  repeated Rect solids = 5;
+  repeated Rect platforms = 6;
+  repeated ExitState exits = 7;
+  repeated JumpLinkState jump_links = 8;
+  repeated PlacedAssetState decorations = 9;
+  int32 index = 10;
+  string template_id = 11;
+  string ring_zone = 12;
+  string death_penalty = 13;
+  bool is_throne = 14;
+  string background_id = 15;
+  string tile_style_id = 16;
+  string below_room_id = 17;
+  string above_room_id = 18;
+  repeated Rect backwalls = 19;
+  repeated Rect reveal_zones = 20;
+  repeated Rect rift_zones = 21;
+  repeated Rect portal_zones = 22;
+  repeated Rect pvp_zones = 23;
+  repeated BossSpawn boss_spawns = 24;
+  repeated RiftState rifts = 25;
+}
+
 
 message RaidLayoutState {
   int64 seed = 1;
@@ -63,14 +92,20 @@ message RaidLayoutState {
   repeated Vec2 player_spawns = 3;
 }
 
+message AbilityCooldown { string ability_id = 1; double remaining = 2; }
 message PlayerRaidState {
   string player_id = 1;
   string name = 2;
   string status = 3;
-  string room_id = 4;
-  int32 carried_loot = 5;
-  string assigned_exit_id = 6;
+  int32 carried_loot = 4;
+  string assigned_exit_id = 5;
+  string assigned_exit_tag = 6;
+  string current_room_id = 7;
+  int32 hp = 8;
+  int32 max_hp = 9;
+  repeated AbilityCooldown cooldowns = 10;
 }
+
 
 message RaidState {
   string raid_id = 1;
@@ -78,11 +113,10 @@ message RaidState {
   string phase = 3;
   double duration = 4;
   double time_remaining = 5;
-  int64 seed = 6;
-  string local_player_id = 7;
-  string local_status = 8;
-  repeated PlayerRaidState players = 9;
+  string local_status = 6;
+  repeated PlayerRaidState players = 7;
 }
+
 
 message SnapshotMessage {
   double server_time = 1;
@@ -126,21 +160,22 @@ message InputCommand {
 }
 
 message InputBatch { repeated InputCommand commands = 1; }
-message ClientPing { double client_time = 1; }
+message PingMessage { double client_time = 1; }
 
 message ClientMessage {
   oneof payload {
     InputBatch input = 1;
-    ClientPing ping = 2;
+    PingMessage ping = 2;
   }
 }
 
 message PongMessage { double client_time = 1; double server_time = 2; }
 
 message ServerMessage {
-  string type = 1;
-  WelcomeMessage welcome = 2;
-  SnapshotMessage snapshot = 3;
-  PongMessage pong = 4;
-  string error = 5;
+  oneof payload {
+    WelcomeMessage welcome = 1;
+    SnapshotMessage snapshot = 2;
+    PongMessage pong = 3;
+    string error = 4;
+  }
 }

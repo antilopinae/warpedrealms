@@ -17,8 +17,11 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"google.golang.org/protobuf/proto"
 
 	"warpedrealms/shared"
+	"warpedrealms/shared/protocolpb"
+	"warpedrealms/warpedrealms/shared/pb"
 )
 
 type NetworkClient struct {
@@ -175,7 +178,15 @@ func (c *NetworkClient) write(message shared.ClientMessage) error {
 	if err := c.conn.SetWriteDeadline(time.Now().Add(2 * time.Second)); err != nil {
 		return err
 	}
-	if err := c.conn.WriteJSON(message); err != nil {
+	pbMsg, err := protocolpb.ClientMessageToPB(message)
+	if err != nil {
+		return fmt.Errorf("encode client message: %w", err)
+	}
+	payload, err := proto.Marshal(pbMsg)
+	if err != nil {
+		return fmt.Errorf("marshal client message: %w", err)
+	}
+	if err := c.conn.WriteMessage(websocket.BinaryMessage, payload); err != nil {
 		return fmt.Errorf("write websocket message: %w", err)
 	}
 	return nil
@@ -185,8 +196,8 @@ func (c *NetworkClient) readLoop(conn *websocket.Conn, seq uint64) {
 	defer c.clearConn(conn, seq)
 
 	for {
-		var message shared.ServerMessage
-		if err := conn.ReadJSON(&message); err != nil {
+		frameType, payload, err := conn.ReadMessage()
+		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) ||
 				strings.Contains(err.Error(), "use of closed network connection") ||
 				!c.isCurrentConn(conn, seq) {
@@ -197,6 +208,25 @@ func (c *NetworkClient) readLoop(conn *websocket.Conn, seq uint64) {
 			default:
 			}
 			return
+		}
+		if frameType != websocket.BinaryMessage {
+			continue
+		}
+		var wire pb.ServerMessage
+		if err := proto.Unmarshal(payload, &wire); err != nil {
+			select {
+			case c.ErrCh <- err:
+			default:
+			}
+			continue
+		}
+		message, err := protocolpb.ServerMessageFromPB(&wire)
+		if err != nil {
+			select {
+			case c.ErrCh <- err:
+			default:
+			}
+			continue
 		}
 
 		switch message.Type {
@@ -266,6 +296,7 @@ func (c *NetworkClient) websocketURL(token string, raidID string, classID string
 	}
 	if classID != "" {
 		query.Set("class", classID)
+		query.Set("proto", "1")
 	}
 	base.RawQuery = query.Encode()
 	return base.String(), nil
