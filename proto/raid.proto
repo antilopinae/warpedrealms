@@ -2,19 +2,117 @@ syntax = "proto3";
 package raid;
 option go_package = "warpedrealms/shared/pb;pb";
 
-message EntityState { bytes json_payload = 1; }
-message LootState { bytes json_payload = 1; }
-message RaidState { bytes json_payload = 1; }
-message RaidLayoutState { bytes json_payload = 1; }
+message Vec2 { double x = 1; double y = 2; }
+message Rect { double x = 1; double y = 2; double w = 3; double h = 4; }
 
-message SnapshotMessage {
-  bytes json_snapshot = 1;
+message TravelState {
+  bool active = 1;
+  string link_id = 2;
+  string from_room_id = 3;
+  string to_room_id = 4;
+  Vec2 start = 5;
+  Vec2 end = 6;
+  double started_at = 7;
+  double ends_at = 8;
 }
 
+message EntityState {
+  string id = 1;
+  string name = 2;
+  string kind = 3;
+  string faction = 4;
+  string class_id = 5;
+  string profile_id = 6;
+  string family_id = 7;
+  string room_id = 8;
+  Vec2 position = 9;
+  Vec2 velocity = 10;
+  double facing = 11;
+  bool grounded = 12;
+  int32 hp = 13;
+  int32 max_hp = 14;
+  string animation = 15;
+  double animation_started_at = 16;
+  Vec2 sprite_size = 17;
+  Vec2 sprite_offset = 18;
+  Rect collider = 19;
+  Rect hurtbox = 20;
+  Rect interaction_box = 21;
+  double scale = 22;
+  TravelState travel = 23;
+  double dash_timer = 24;
+  double dash_cooldown = 25;
+}
+
+message LootState {
+  string id = 1;
+  string profile_id = 2;
+  string room_id = 3;
+  Vec2 position = 4;
+  int32 value = 5;
+}
+
+message ExitState { string id = 1; string room_id = 2; string label = 3; Rect area = 4; string assigned_player_id = 5; }
+message PlacedAssetState { string id = 1; string profile_id = 2; string room_id = 3; Vec2 position = 4; double scale = 5; Vec2 draw_offset = 6; string layer = 7; double alpha = 8; Rect bounds = 9; }
+message JumpLinkState { string id = 1; string room_id = 2; string target_room_id = 3; string label = 4; Rect area = 5; Vec2 arrival = 6; }
+message RoomState { string id = 1; string name = 2; string zone = 3; Rect bounds = 4; repeated Rect solids = 5; repeated Rect one_way_platforms = 6; repeated ExitState exits = 7; repeated JumpLinkState jump_links = 8; repeated PlacedAssetState assets = 9; }
+
+message RaidLayoutState {
+  int64 seed = 1;
+  repeated RoomState rooms = 2;
+  repeated Vec2 player_spawns = 3;
+}
+
+message PlayerRaidState {
+  string player_id = 1;
+  string name = 2;
+  string status = 3;
+  string room_id = 4;
+  int32 carried_loot = 5;
+  string assigned_exit_id = 6;
+}
+
+message RaidState {
+  string raid_id = 1;
+  string name = 2;
+  string phase = 3;
+  double duration = 4;
+  double time_remaining = 5;
+  int64 seed = 6;
+  string local_player_id = 7;
+  string local_status = 8;
+  repeated PlayerRaidState players = 9;
+}
+
+message SnapshotMessage {
+  double server_time = 1;
+  uint64 tick = 2;
+  string local_player_id = 3;
+  uint32 last_processed_seq = 4;
+  RaidLayoutState layout = 5;
+  repeated EntityState entities = 6;
+  repeated LootState loot = 7;
+  RaidState raid = 8;
+}
+
+message WelcomeMessage {
+  string player_id = 1;
+  string player_name = 2;
+  string class_id = 3;
+  string raid_id = 4;
+  string raid_name = 5;
+  string content_version = 6;
+  double server_time = 7;
+  double tick_rate = 8;
+  double snapshot_rate = 9;
+  double interpolation_back_time = 10;
+}
+message PongMessage { double client_time = 1; double server_time = 2; }
+
 message ServerMessage {
-  uint32 protocol_version = 1;
-  string type = 2;
-  oneof body {
-    SnapshotMessage snapshot = 10;
-  }
+  string type = 1;
+  WelcomeMessage welcome = 2;
+  SnapshotMessage snapshot = 3;
+  PongMessage pong = 4;
+  string error = 5;
 }
