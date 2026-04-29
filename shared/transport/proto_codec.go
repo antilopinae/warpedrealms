@@ -1,80 +1,73 @@
 package transport
 
 import (
-	"io"
+	"fmt"
 	"warpedrealms/shared"
-	"warpedrealms/shared/minipb"
+	"warpedrealms/shared/pbwire"
 )
 
-func EncodeSnapshot(s *shared.SnapshotMessage, e minipb.Endian) []byte {
-	w := minipb.NewWriter(e)
-	w.Field(1, minipb.F64(s.ServerTime, e))
-	w.Field(2, minipb.U64(s.Tick, e))
-	w.Field(3, minipb.Str(s.LocalPlayerID))
-	w.Field(4, minipb.U32(s.LastProcessedSeq, e))
-	for _, en := range s.Entities {
-		w.Field(10, encodeEntity(en, e))
+func EncodeSnapshot(s *shared.SnapshotMessage) []byte {
+	w := &pbwire.Writer{}
+	w.Double(1, s.ServerTime)
+	w.Uint64(2, s.Tick)
+	w.String(3, s.LocalPlayerID)
+	w.Uint32(4, s.LastProcessedSeq)
+	for _, e := range s.Entities {
+		w.Message(10, encodeEntity(e))
 	}
 	for _, l := range s.Loot {
-		w.Field(11, encodeLoot(l, e))
+		w.Message(11, encodeLoot(l))
 	}
 	return w.Bytes()
 }
-func DecodeSnapshot(b []byte, e minipb.Endian) (shared.SnapshotMessage, error) {
-	r := minipb.NewReader(b, e)
+func DecodeSnapshot(b []byte) (shared.SnapshotMessage, error) {
+	r := pbwire.NewReader(b)
 	out := shared.SnapshotMessage{}
 	for {
-		t, p, err := r.Next()
+		f, _, p, err := r.Next()
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return out, err
+			break
 		}
-		switch t {
+		switch f {
 		case 1:
-			out.ServerTime = minipb.ReadF64(p, e)
+			out.ServerTime = pbwire.AsDouble(p)
 		case 2:
-			out.Tick = minipb.ReadU64(p, e)
+			out.Tick = pbwire.AsUint(p)
 		case 3:
 			out.LocalPlayerID = string(p)
 		case 4:
-			out.LastProcessedSeq = minipb.ReadU32(p, e)
+			out.LastProcessedSeq = uint32(pbwire.AsUint(p))
 		case 10:
-			out.Entities = append(out.Entities, decodeEntity(p, e))
+			out.Entities = append(out.Entities, decodeEntity(p))
 		case 11:
-			out.Loot = append(out.Loot, decodeLoot(p, e))
+			out.Loot = append(out.Loot, decodeLoot(p))
 		}
 	}
 	return out, nil
 }
-
-func EncodeWelcome(wm *shared.WelcomeMessage, e minipb.Endian) []byte {
-	w := minipb.NewWriter(e)
-	w.Field(1, minipb.Str(wm.PlayerID))
-	w.Field(2, minipb.Str(wm.PlayerName))
-	w.Field(3, minipb.Str(wm.ClassID))
-	w.Field(4, minipb.Str(wm.RaidID))
-	w.Field(5, minipb.Str(wm.RaidName))
-	w.Field(6, minipb.Str(wm.ContentVersion))
-	w.Field(7, minipb.F64(wm.ServerTime, e))
-	w.Field(8, minipb.F64(wm.TickRate, e))
-	w.Field(9, minipb.F64(wm.SnapshotRate, e))
-	w.Field(10, minipb.F64(wm.InterpolationBackTime, e))
+func EncodeWelcome(m *shared.WelcomeMessage) []byte {
+	w := &pbwire.Writer{}
+	w.String(1, m.PlayerID)
+	w.String(2, m.PlayerName)
+	w.String(3, m.ClassID)
+	w.String(4, m.RaidID)
+	w.String(5, m.RaidName)
+	w.String(6, m.ContentVersion)
+	w.Double(7, m.ServerTime)
+	w.Double(8, m.TickRate)
+	w.Double(9, m.SnapshotRate)
+	w.Double(10, m.InterpolationBackTime)
 	return w.Bytes()
 }
-func DecodeWelcome(b []byte, e minipb.Endian) (shared.WelcomeMessage, error) {
-	r := minipb.NewReader(b, e)
+func DecodeWelcome(b []byte) (shared.WelcomeMessage, error) {
+	r := pbwire.NewReader(b)
 	out := shared.WelcomeMessage{}
 	for {
-		t, p, err := r.Next()
+		f, _, p, err := r.Next()
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return out, err
+			break
 		}
-		switch t {
+		switch f {
 		case 1:
 			out.PlayerID = string(p)
 		case 2:
@@ -88,66 +81,62 @@ func DecodeWelcome(b []byte, e minipb.Endian) (shared.WelcomeMessage, error) {
 		case 6:
 			out.ContentVersion = string(p)
 		case 7:
-			out.ServerTime = minipb.ReadF64(p, e)
+			out.ServerTime = pbwire.AsDouble(p)
 		case 8:
-			out.TickRate = minipb.ReadF64(p, e)
+			out.TickRate = pbwire.AsDouble(p)
 		case 9:
-			out.SnapshotRate = minipb.ReadF64(p, e)
+			out.SnapshotRate = pbwire.AsDouble(p)
 		case 10:
-			out.InterpolationBackTime = minipb.ReadF64(p, e)
+			out.InterpolationBackTime = pbwire.AsDouble(p)
 		}
 	}
 	return out, nil
 }
-
-func EncodePong(p *shared.PongMessage, e minipb.Endian) []byte {
-	w := minipb.NewWriter(e)
-	w.Field(1, minipb.F64(p.ClientTime, e))
-	w.Field(2, minipb.F64(p.ServerTime, e))
+func EncodePong(m *shared.PongMessage) []byte {
+	w := &pbwire.Writer{}
+	w.Double(1, m.ClientTime)
+	w.Double(2, m.ServerTime)
 	return w.Bytes()
 }
-func DecodePong(b []byte, e minipb.Endian) (shared.PongMessage, error) {
-	r := minipb.NewReader(b, e)
+func DecodePong(b []byte) (shared.PongMessage, error) {
+	r := pbwire.NewReader(b)
 	out := shared.PongMessage{}
 	for {
-		t, p, err := r.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return out, err
-		}
-		if t == 1 {
-			out.ClientTime = minipb.ReadF64(p, e)
-		}
-		if t == 2 {
-			out.ServerTime = minipb.ReadF64(p, e)
-		}
-	}
-	return out, nil
-}
-
-func encodeEntity(en shared.EntityState, e minipb.Endian) []byte {
-	w := minipb.NewWriter(e)
-	w.Field(1, minipb.Str(en.ID))
-	w.Field(2, minipb.Str(en.Name))
-	w.Field(3, minipb.Str(string(en.Kind)))
-	w.Field(4, minipb.F64(en.Position.X, e))
-	w.Field(5, minipb.F64(en.Position.Y, e))
-	w.Field(6, minipb.U32(uint32(en.HP), e))
-	w.Field(7, minipb.U32(uint32(en.MaxHP), e))
-	w.Field(8, minipb.Str(en.RoomID))
-	return w.Bytes()
-}
-func decodeEntity(b []byte, e minipb.Endian) shared.EntityState {
-	r := minipb.NewReader(b, e)
-	out := shared.EntityState{}
-	for {
-		t, p, err := r.Next()
+		f, _, p, err := r.Next()
 		if err != nil {
 			break
 		}
-		switch t {
+		if f == 1 {
+			out.ClientTime = pbwire.AsDouble(p)
+		}
+		if f == 2 {
+			out.ServerTime = pbwire.AsDouble(p)
+		}
+	}
+	return out, nil
+}
+
+func encodeEntity(e shared.EntityState) []byte {
+	w := &pbwire.Writer{}
+	w.String(1, e.ID)
+	w.String(2, e.Name)
+	w.String(3, string(e.Kind))
+	w.String(4, e.RoomID)
+	w.Double(5, e.Position.X)
+	w.Double(6, e.Position.Y)
+	w.Uint32(7, uint32(e.HP))
+	w.Uint32(8, uint32(e.MaxHP))
+	return w.Bytes()
+}
+func decodeEntity(b []byte) shared.EntityState {
+	r := pbwire.NewReader(b)
+	out := shared.EntityState{}
+	for {
+		f, _, p, err := r.Next()
+		if err != nil {
+			break
+		}
+		switch f {
 		case 1:
 			out.ID = string(p)
 		case 2:
@@ -155,47 +144,49 @@ func decodeEntity(b []byte, e minipb.Endian) shared.EntityState {
 		case 3:
 			out.Kind = shared.EntityKind(string(p))
 		case 4:
-			out.Position.X = minipb.ReadF64(p, e)
-		case 5:
-			out.Position.Y = minipb.ReadF64(p, e)
-		case 6:
-			out.HP = int(minipb.ReadU32(p, e))
-		case 7:
-			out.MaxHP = int(minipb.ReadU32(p, e))
-		case 8:
 			out.RoomID = string(p)
+		case 5:
+			out.Position.X = pbwire.AsDouble(p)
+		case 6:
+			out.Position.Y = pbwire.AsDouble(p)
+		case 7:
+			out.HP = int(pbwire.AsUint(p))
+		case 8:
+			out.MaxHP = int(pbwire.AsUint(p))
 		}
 	}
 	return out
 }
-func encodeLoot(l shared.LootState, e minipb.Endian) []byte {
-	w := minipb.NewWriter(e)
-	w.Field(1, minipb.Str(l.ID))
-	w.Field(2, minipb.Str(l.RoomID))
-	w.Field(3, minipb.F64(l.Position.X, e))
-	w.Field(4, minipb.F64(l.Position.Y, e))
-	w.Field(5, minipb.U32(uint32(l.Value), e))
+func encodeLoot(l shared.LootState) []byte {
+	w := &pbwire.Writer{}
+	w.String(1, l.ID)
+	w.String(2, l.RoomID)
+	w.Double(3, l.Position.X)
+	w.Double(4, l.Position.Y)
+	w.Uint32(5, uint32(l.Value))
 	return w.Bytes()
 }
-func decodeLoot(b []byte, e minipb.Endian) shared.LootState {
-	r := minipb.NewReader(b, e)
+func decodeLoot(b []byte) shared.LootState {
+	r := pbwire.NewReader(b)
 	out := shared.LootState{}
 	for {
-		t, p, err := r.Next()
+		f, _, p, err := r.Next()
 		if err != nil {
 			break
 		}
-		switch t {
+		switch f {
 		case 1:
 			out.ID = string(p)
 		case 2:
 			out.RoomID = string(p)
 		case 3:
-			out.Position.X = minipb.ReadF64(p, e)
+			out.Position.X = pbwire.AsDouble(p)
 		case 4:
-			out.Position.Y = minipb.ReadF64(p, e)
+			out.Position.Y = pbwire.AsDouble(p)
 		case 5:
-			out.Value = int(minipb.ReadU32(p, e))
+			out.Value = int(pbwire.AsUint(p))
+		default:
+			fmt.Sprint()
 		}
 	}
 	return out

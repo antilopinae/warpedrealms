@@ -2,11 +2,9 @@ package transport
 
 import (
 	"fmt"
-	"io"
-
 	"github.com/gorilla/websocket"
 	"warpedrealms/shared"
-	"warpedrealms/shared/minipb"
+	"warpedrealms/shared/pbwire"
 )
 
 type Encoding string
@@ -16,60 +14,56 @@ const (
 )
 
 func WriteServerMessage(conn *websocket.Conn, _ Encoding, m shared.ServerMessage) error {
-	w := minipb.NewWriter(minipb.LittleEndian)
-	w.Field(1, []byte(m.Type))
+	w := &pbwire.Writer{}
+	w.String(1, m.Type)
 	switch m.Type {
 	case "snapshot":
 		if m.Snapshot == nil {
 			return fmt.Errorf("snapshot nil")
 		}
-		w.Field(2, EncodeSnapshot(m.Snapshot, minipb.LittleEndian))
+		w.Message(2, EncodeSnapshot(m.Snapshot))
 	case "welcome":
 		if m.Welcome == nil {
 			return fmt.Errorf("welcome nil")
 		}
-		w.Field(3, EncodeWelcome(m.Welcome, minipb.LittleEndian))
+		w.Message(3, EncodeWelcome(m.Welcome))
 	case "pong":
 		if m.Pong == nil {
 			return fmt.Errorf("pong nil")
 		}
-		w.Field(4, EncodePong(m.Pong, minipb.LittleEndian))
+		w.Message(4, EncodePong(m.Pong))
 	case "error":
-		w.Field(9, []byte(m.Error))
+		w.String(9, m.Error)
 	}
 	return conn.WriteMessage(websocket.BinaryMessage, w.Bytes())
 }
-
 func ReadServerMessage(msgType int, data []byte, out *shared.ServerMessage) error {
 	if msgType != websocket.BinaryMessage {
 		return fmt.Errorf("binary only")
 	}
-	r := minipb.NewReader(data, minipb.LittleEndian)
+	r := pbwire.NewReader(data)
 	for {
-		tag, p, err := r.Next()
+		f, _, p, err := r.Next()
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return err
+			break
 		}
-		switch tag {
+		switch f {
 		case 1:
 			out.Type = string(p)
 		case 2:
-			s, err := DecodeSnapshot(p, minipb.LittleEndian)
+			s, err := DecodeSnapshot(p)
 			if err != nil {
 				return err
 			}
 			out.Snapshot = &s
 		case 3:
-			w, err := DecodeWelcome(p, minipb.LittleEndian)
+			w, err := DecodeWelcome(p)
 			if err != nil {
 				return err
 			}
 			out.Welcome = &w
 		case 4:
-			pg, err := DecodePong(p, minipb.LittleEndian)
+			pg, err := DecodePong(p)
 			if err != nil {
 				return err
 			}

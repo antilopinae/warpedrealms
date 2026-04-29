@@ -3,13 +3,12 @@ package transport
 import (
 	"testing"
 	"warpedrealms/shared"
-	"warpedrealms/shared/minipb"
 )
 
 func TestBinarySnapshotGolden(t *testing.T) {
 	snap := &shared.SnapshotMessage{ServerTime: 1.5, Tick: 7, LocalPlayerID: "p1", LastProcessedSeq: 3, Entities: []shared.EntityState{{ID: "e1", Name: "n", Kind: shared.EntityKindPlayer, HP: 10, MaxHP: 20, RoomID: "r1"}}, Loot: []shared.LootState{{ID: "l1", Value: 5}}}
-	raw := EncodeSnapshot(snap, minipb.LittleEndian)
-	out, err := DecodeSnapshot(raw, minipb.LittleEndian)
+	raw := EncodeSnapshot(snap)
+	out, err := DecodeSnapshot(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,8 +19,8 @@ func TestBinarySnapshotGolden(t *testing.T) {
 
 func TestWelcomeRoundTrip(t *testing.T) {
 	in := &shared.WelcomeMessage{PlayerID: "p1", PlayerName: "u", ClassID: "knight", RaidID: "r", RaidName: "raid", ContentVersion: "v", ServerTime: 1, TickRate: 60, SnapshotRate: 20, InterpolationBackTime: 0.1}
-	raw := EncodeWelcome(in, minipb.LittleEndian)
-	out, err := DecodeWelcome(raw, minipb.LittleEndian)
+	raw := EncodeWelcome(in)
+	out, err := DecodeWelcome(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
