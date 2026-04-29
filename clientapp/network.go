@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"warpedrealms/shared"
+	"warpedrealms/shared/transport"
 )
 
 type NetworkClient struct {
@@ -29,10 +30,11 @@ type NetworkClient struct {
 	conn    *websocket.Conn
 	connSeq uint64
 
-	WelcomeCh  chan shared.WelcomeMessage
-	SnapshotCh chan shared.SnapshotMessage
-	PongCh     chan shared.PongMessage
-	ErrCh      chan error
+	WelcomeCh        chan shared.WelcomeMessage
+	SnapshotCh       chan shared.SnapshotMessage
+	PongCh           chan shared.PongMessage
+	ErrCh            chan error
+	SnapshotEncoding transport.Encoding
 }
 
 func NewNetworkClient(baseURL string) *NetworkClient {
@@ -41,10 +43,11 @@ func NewNetworkClient(baseURL string) *NetworkClient {
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
-		WelcomeCh:  make(chan shared.WelcomeMessage, 8),
-		SnapshotCh: make(chan shared.SnapshotMessage, 32),
-		PongCh:     make(chan shared.PongMessage, 8),
-		ErrCh:      make(chan error, 8),
+		WelcomeCh:        make(chan shared.WelcomeMessage, 8),
+		SnapshotCh:       make(chan shared.SnapshotMessage, 32),
+		PongCh:           make(chan shared.PongMessage, 8),
+		ErrCh:            make(chan error, 8),
+		SnapshotEncoding: transport.EncodingJSON,
 	}
 }
 
@@ -191,8 +194,12 @@ func (c *NetworkClient) readLoop(conn *websocket.Conn, seq uint64) {
 	defer c.clearConn(conn, seq)
 
 	for {
+		msgType, raw, err := conn.ReadMessage()
 		var message shared.ServerMessage
-		if err := conn.ReadJSON(&message); err != nil {
+		if err == nil {
+			err = transport.ReadServerMessage(msgType, raw, &message)
+		}
+		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) ||
 				strings.Contains(err.Error(), "use of closed network connection") ||
 				!c.isCurrentConn(conn, seq) {
@@ -272,6 +279,12 @@ func (c *NetworkClient) websocketURL(token string, raidID string, classID string
 	}
 	if classID != "" {
 		query.Set("class", classID)
+	}
+	if c.SnapshotEncoding != "" {
+		query.Set("protocol", string(c.SnapshotEncoding))
+		if c.SnapshotEncoding == transport.EncodingProtobuf {
+			query.Set("version", "2")
+		}
 	}
 	base.RawQuery = query.Encode()
 	return base.String(), nil

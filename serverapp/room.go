@@ -17,6 +17,7 @@ import (
 
 	"warpedrealms/content"
 	"warpedrealms/shared"
+	"warpedrealms/shared/transport"
 )
 
 type Peer struct {
@@ -25,6 +26,7 @@ type Peer struct {
 	classID    string
 	conn       *websocket.Conn
 	send       chan shared.ServerMessage
+	encoding   transport.Encoding
 	room       *RaidRoom
 }
 

@@ -18,6 +18,7 @@ import (
 
 	"warpedrealms/content"
 	"warpedrealms/shared"
+	"warpedrealms/shared/transport"
 )
 
 type Server struct {
@@ -179,6 +180,7 @@ func (s *Server) handleWebSocket(writer http.ResponseWriter, request *http.Reque
 		classID:    classID,
 		conn:       conn,
 		send:       make(chan shared.ServerMessage, 8),
+		encoding:   negotiateEncoding(request),
 		room:       room,
 	}
 
@@ -230,7 +232,7 @@ func (p *Peer) writeLoop() {
 
 	for message := range p.send {
 		_ = p.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if err := p.conn.WriteJSON(message); err != nil {
+		if err := transport.WriteServerMessage(p.conn, p.encoding, message); err != nil {
 			return
 		}
 	}
@@ -283,4 +285,12 @@ func trySend(channel chan shared.ServerMessage, message shared.ServerMessage) {
 	case channel <- message:
 	default:
 	}
+}
+
+func negotiateEncoding(request *http.Request) transport.Encoding {
+	protocol := strings.ToLower(strings.TrimSpace(request.URL.Query().Get("protocol")))
+	if protocol == string(transport.EncodingProtobuf) || request.URL.Query().Get("version") == "2" {
+		return transport.EncodingProtobuf
+	}
+	return transport.EncodingJSON
 }

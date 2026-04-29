@@ -1,0 +1,20 @@
+syntax = "proto3";
+package raid;
+option go_package = "warpedrealms/shared/pb;pb";
+
+message EntityState { bytes json_payload = 1; }
+message LootState { bytes json_payload = 1; }
+message RaidState { bytes json_payload = 1; }
+message RaidLayoutState { bytes json_payload = 1; }
+
+message SnapshotMessage {
+  bytes json_snapshot = 1;
+}
+
+message ServerMessage {
+  uint32 protocol_version = 1;
+  string type = 2;
+  oneof body {
+    SnapshotMessage snapshot = 10;
+  }
+}
