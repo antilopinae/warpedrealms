@@ -192,7 +192,8 @@ func (c *NetworkClient) readLoop(conn *websocket.Conn, seq uint64) {
 
 	for {
 		var message shared.ServerMessage
-		if err := conn.ReadJSON(&message); err != nil {
+		mt, raw, err := conn.ReadMessage()
+		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) ||
 				strings.Contains(err.Error(), "use of closed network connection") ||
 				!c.isCurrentConn(conn, seq) {
@@ -205,18 +206,27 @@ func (c *NetworkClient) readLoop(conn *websocket.Conn, seq uint64) {
 			return
 		}
 
+		if mt == websocket.BinaryMessage {
+			snapshot, err := shared.DecodeSnapshotBinary(raw)
+			if err == nil {
+				select {
+				case c.SnapshotCh <- *snapshot:
+				default:
+				}
+				continue
+			}
+		}
+
+		var message shared.ServerMessage
+		if err := json.Unmarshal(raw, &message); err != nil {
+			continue
+		}
+
 		switch message.Type {
 		case "welcome":
 			if message.Welcome != nil {
 				select {
 				case c.WelcomeCh <- *message.Welcome:
-				default:
-				}
-			}
-		case "snapshot":
-			if message.Snapshot != nil {
-				select {
-				case c.SnapshotCh <- *message.Snapshot:
 				default:
 				}
 			}
@@ -267,6 +277,8 @@ func (c *NetworkClient) websocketURL(token string, raidID string, classID string
 	base.Path = "/ws"
 	query := base.Query()
 	query.Set("token", token)
+	query.Set("protocol", "protobuf")
+	query.Set("version", "2")
 	if raidID != "" {
 		query.Set("raid", raidID)
 	}

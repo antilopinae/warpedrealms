@@ -230,6 +230,16 @@ func (p *Peer) writeLoop() {
 
 	for message := range p.send {
 		_ = p.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if message.Type == "snapshot" && message.Snapshot != nil {
+			raw, err := shared.EncodeSnapshotBinary(*message.Snapshot)
+			if err != nil {
+				continue
+			}
+			if err := p.conn.WriteMessage(websocket.BinaryMessage, raw); err != nil {
+				return
+			}
+			continue
+		}
 		if err := p.conn.WriteJSON(message); err != nil {
 			return
 		}

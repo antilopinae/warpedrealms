@@ -6,6 +6,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/hajimehoshi/ebiten/v2 v2.9.9
 	golang.org/x/crypto v0.50.0
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
