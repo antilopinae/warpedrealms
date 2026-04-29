@@ -8,7 +8,9 @@ package clientapp
 import (
 	"image"
 	"image/color"
+	"log"
 	"math"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -24,11 +26,38 @@ type roomPreview struct {
 }
 
 type RaidRenderer struct {
-	assets *Assets
+	assets            *Assets
+	bgGeometryCache   map[string]preparedBgGeometry
+	bgGeometryProfile bgGeometryProfile
 }
 
 func NewRaidRenderer(assets *Assets) *RaidRenderer {
-	return &RaidRenderer{assets: assets}
+	return &RaidRenderer{
+		assets:          assets,
+		bgGeometryCache: make(map[string]preparedBgGeometry),
+	}
+}
+
+type bgRectCommand struct {
+	x, y, w, h float64
+	color      color.RGBA
+}
+
+type preparedBgGeometry struct {
+	roomID       string
+	roomHash     uint64
+	scaleBucket  int
+	cellFills    []bgRectCommand
+	topRims      []bgRectCommand
+	boundaryFill []bgRectCommand
+	boundaryRims []bgRectCommand
+}
+
+type bgGeometryProfile struct {
+	frameCount      int
+	prepareNanos    int64
+	drawNanos       int64
+	lastReportFrame int
 }
 
 // DrawScene renders the active room and its background (if any).
@@ -100,9 +129,46 @@ func bgRoomTransform(fgCam shared.Vec2, fgScale float64, offset shared.Vec2) (fl
 // the LDtk loader) are drawn as a dark ground-mass so the bottom of the room
 // is visible and does not clip into the void.
 func (r *RaidRenderer) drawRoomAsBackground(screen *ebiten.Image, room shared.RoomState, camera shared.Vec2, offset shared.Vec2, scale float64) {
-	const gs = 16.0 // grid cell size in world pixels
+	start := time.Now()
+	prepared := r.preparedBgGeometry(room, scale)
+	prepareDur := time.Since(start)
+	drawStart := time.Now()
+	for _, cmd := range prepared.cellFills {
+		r.drawBgPreparedRect(screen, cmd, camera, offset, scale)
+	}
+	for _, cmd := range prepared.topRims {
+		r.drawBgPreparedRect(screen, cmd, camera, offset, scale)
+	}
+	for _, cmd := range prepared.boundaryFill {
+		r.drawBgPreparedRect(screen, cmd, camera, offset, scale)
+	}
+	for _, cmd := range prepared.boundaryRims {
+		r.drawBgPreparedRect(screen, cmd, camera, offset, scale)
+	}
+	r.recordBgProfile(prepareDur, time.Since(drawStart))
+}
 
-	// Build a lookup of occupied cells (for top-rim detection).
+func (r *RaidRenderer) drawBgPreparedRect(screen *ebiten.Image, cmd bgRectCommand, camera shared.Vec2, offset shared.Vec2, scale float64) {
+	sx := float32(offset.X + (cmd.x-camera.X)*scale)
+	sy := float32(offset.Y + (cmd.y-camera.Y)*scale)
+	sw := float32(cmd.w * scale)
+	sh := float32(cmd.h * scale)
+	vector.DrawFilledRect(screen, sx, sy, sw, sh, cmd.color, false)
+}
+
+func (r *RaidRenderer) preparedBgGeometry(room shared.RoomState, scale float64) preparedBgGeometry {
+	scaleBucket := int(math.Round(scale * 100))
+	roomHash := hashRoomGeometry(room)
+	if cached, ok := r.bgGeometryCache[room.ID]; ok && cached.roomHash == roomHash && cached.scaleBucket == scaleBucket {
+		return cached
+	}
+	prepared := buildBgGeometry(room, scale, roomHash, scaleBucket)
+	r.bgGeometryCache[room.ID] = prepared
+	return prepared
+}
+
+func buildBgGeometry(room shared.RoomState, scale float64, roomHash uint64, scaleBucket int) preparedBgGeometry {
+	const gs = 16.0
 	type cellKey [2]int
 	occupied := make(map[cellKey]bool, len(room.Solids))
 	for _, s := range room.Solids {
@@ -110,40 +176,63 @@ func (r *RaidRenderer) drawRoomAsBackground(screen *ebiten.Image, room shared.Ro
 			occupied[cellKey{int(math.Round(s.X / gs)), int(math.Round(s.Y / gs))}] = true
 		}
 	}
-
 	_, rimClr := platformColors(room.Biome, 0.90)
 	fillClr, _ := platformColors(room.Biome, 0.12)
-	rimH := float32(math.Max(3, scale*gs*0.30)) // bright top-rim height in screen px
-
-	// Boundary fill colour: dark near-black mass for floor / walls.
 	fillBig, _ := platformColors(room.Biome, 0.28)
 	rimBig := rimClr
 	rimBig.A = uint8(float64(rimBig.A) * 0.7)
+	rimH := math.Max(3, scale*gs*0.30) // depends on scale, so cache bucketed by scale
+	rimBigH := math.Max(2, rimH*0.8)
 
+	prepared := preparedBgGeometry{roomID: room.ID, roomHash: roomHash, scaleBucket: scaleBucket}
 	for _, s := range room.Solids {
-		sx := float32(offset.X + (s.X-camera.X)*scale)
-		sy := float32(offset.Y + (s.Y-camera.Y)*scale)
-		sw := float32(s.W * scale)
-		sh := float32(s.H * scale)
-
 		if s.W == gs && s.H == gs {
-			// Individual platform cell — subtle fill + bright top rim.
 			col := int(math.Round(s.X / gs))
 			row := int(math.Round(s.Y / gs))
-			vector.DrawFilledRect(screen, sx, sy, sw, sh, fillClr, false)
+			prepared.cellFills = append(prepared.cellFills, bgRectCommand{x: s.X, y: s.Y, w: s.W, h: s.H, color: fillClr})
 			if !occupied[cellKey{col, row - 1}] {
-				vector.DrawFilledRect(screen, sx, sy, sw, rimH, rimClr, false)
+				prepared.topRims = append(prepared.topRims, bgRectCommand{x: s.X, y: s.Y, w: s.W, h: rimH / scale, color: rimClr})
 			}
 		} else if s.W > gs*4 && s.H >= gs {
-			// Wide boundary rect (floor or wide ledge) — draw as ground mass.
-			vector.DrawFilledRect(screen, sx, sy, sw, sh, fillBig, false)
-			// Bright top edge so the floor reads as a surface.
-			vector.DrawFilledRect(screen, sx, sy, sw, float32(math.Max(2, float64(rimH)*0.8)), rimBig, false)
+			prepared.boundaryFill = append(prepared.boundaryFill, bgRectCommand{x: s.X, y: s.Y, w: s.W, h: s.H, color: fillBig})
+			prepared.boundaryRims = append(prepared.boundaryRims, bgRectCommand{x: s.X, y: s.Y, w: s.W, h: rimBigH / scale, color: rimBig})
 		}
-		// Narrow vertical walls (left/right boundary) — deliberately skipped
-		// to avoid blocking the view of the background room.
 	}
+	return prepared
+}
 
+func hashRoomGeometry(room shared.RoomState) uint64 {
+	var h uint64 = 1469598103934665603
+	const prime uint64 = 1099511628211
+	for _, b := range []byte(room.Biome) {
+		h ^= uint64(b)
+		h *= prime
+	}
+	for _, s := range room.Solids {
+		h ^= uint64(math.Float64bits(s.X))
+		h *= prime
+		h ^= uint64(math.Float64bits(s.Y))
+		h *= prime
+		h ^= uint64(math.Float64bits(s.W))
+		h *= prime
+		h ^= uint64(math.Float64bits(s.H))
+		h *= prime
+	}
+	return h
+}
+
+func (r *RaidRenderer) recordBgProfile(prepare, draw time.Duration) {
+	r.bgGeometryProfile.frameCount++
+	r.bgGeometryProfile.prepareNanos += prepare.Nanoseconds()
+	r.bgGeometryProfile.drawNanos += draw.Nanoseconds()
+	if r.bgGeometryProfile.frameCount-r.bgGeometryProfile.lastReportFrame < 180 {
+		return
+	}
+	frames := int64(r.bgGeometryProfile.frameCount)
+	avgPrepareMs := float64(r.bgGeometryProfile.prepareNanos) / float64(frames) / 1e6
+	avgDrawMs := float64(r.bgGeometryProfile.drawNanos) / float64(frames) / 1e6
+	log.Printf("drawRoomAsBackground profile: avg_prepare=%.4fms avg_draw=%.4fms frames=%d", avgPrepareMs, avgDrawMs, r.bgGeometryProfile.frameCount)
+	r.bgGeometryProfile.lastReportFrame = r.bgGeometryProfile.frameCount
 }
 
 // drawBgDepthHaze overlays a dark atmospheric veil over the background room,
