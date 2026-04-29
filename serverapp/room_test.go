@@ -260,6 +260,48 @@ func TestHiddenMimicSnapshotDoesNotLeakMimicDetails(t *testing.T) {
 	t.Fatal("concealed mimic not present in snapshot")
 }
 
+func TestSnapshotSendsLayoutOnlyOncePerPeer(t *testing.T) {
+	bundle, err := content.LoadBundle(filepath.Join("..", shared.DefaultAssetManifestPath), filepath.Join("..", shared.DefaultRoomsDir))
+	if err != nil {
+		t.Fatalf("load bundle: %v", err)
+	}
+	room, err := NewRaidRoom("raid-test", "Raid Test", bundle, shared.DefaultRaidMaxPlayers, shared.DefaultRaidDuration, 12345)
+	if err != nil {
+		t.Fatalf("new raid room: %v", err)
+	}
+
+	peer := &Peer{
+		playerID:   "player-layout",
+		playerName: "player",
+		classID:    shared.PlayerClassKnight,
+		send:       make(chan shared.ServerMessage, 8),
+	}
+	room.peers[peer.playerID] = peer
+
+	first := room.snapshotFor(peer.playerID)
+	if first.Layout == nil {
+		t.Fatal("expected first snapshot to include layout")
+	}
+
+	second := room.snapshotFor(peer.playerID)
+	if second.Layout != nil {
+		t.Fatal("expected second snapshot to omit layout")
+	}
+
+	rejoinedPeer := &Peer{
+		playerID:   peer.playerID,
+		playerName: "player",
+		classID:    shared.PlayerClassKnight,
+		send:       make(chan shared.ServerMessage, 8),
+	}
+	room.peers[peer.playerID] = rejoinedPeer
+
+	rejoinSnapshot := room.snapshotFor(rejoinedPeer.playerID)
+	if rejoinSnapshot.Layout == nil {
+		t.Fatal("expected rejoin snapshot to include layout for new peer")
+	}
+}
+
 func TestHiddenMimicOpensOnlyOnInteract(t *testing.T) {
 	bundle, err := content.LoadBundle(filepath.Join("..", shared.DefaultAssetManifestPath), filepath.Join("..", shared.DefaultRoomsDir))
 	if err != nil {
