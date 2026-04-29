@@ -56,6 +56,7 @@ message ExitState { string id = 1; string room_id = 2; string label = 3; Rect ar
 message PlacedAssetState { string id = 1; string profile_id = 2; string room_id = 3; Vec2 position = 4; double scale = 5; Vec2 draw_offset = 6; string layer = 7; double alpha = 8; Rect bounds = 9; }
 message JumpLinkState { string id = 1; string room_id = 2; string target_room_id = 3; string label = 4; Rect area = 5; Vec2 arrival = 6; }
 message BossSpawn { double x = 1; double y = 2; int32 level = 3; bool flying = 4; }
+message RiftState { string id = 1; string room_id = 2; string target_room_id = 3; Rect area = 4; Vec2 arrival = 5; string kind = 6; int32 capacity = 7; int32 used_count = 8; }
 message RoomState {
   string id = 1;
   string name = 2;
@@ -81,6 +82,7 @@ message RoomState {
   repeated Rect portal_zones = 22;
   repeated Rect pvp_zones = 23;
   repeated BossSpawn boss_spawns = 24;
+  repeated RiftState rifts = 25;
 }
 
 

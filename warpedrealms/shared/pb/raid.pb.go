@@ -889,6 +889,106 @@ func (x *BossSpawn) GetFlying() bool {
 	return false
 }
 
+type RiftState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	RoomId        string                 `protobuf:"bytes,2,opt,name=room_id,json=roomId,proto3" json:"room_id,omitempty"`
+	TargetRoomId  string                 `protobuf:"bytes,3,opt,name=target_room_id,json=targetRoomId,proto3" json:"target_room_id,omitempty"`
+	Area          *Rect                  `protobuf:"bytes,4,opt,name=area,proto3" json:"area,omitempty"`
+	Arrival       *Vec2                  `protobuf:"bytes,5,opt,name=arrival,proto3" json:"arrival,omitempty"`
+	Kind          string                 `protobuf:"bytes,6,opt,name=kind,proto3" json:"kind,omitempty"`
+	Capacity      int32                  `protobuf:"varint,7,opt,name=capacity,proto3" json:"capacity,omitempty"`
+	UsedCount     int32                  `protobuf:"varint,8,opt,name=used_count,json=usedCount,proto3" json:"used_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RiftState) Reset() {
+	*x = RiftState{}
+	mi := &file_proto_raid_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RiftState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RiftState) ProtoMessage() {}
+
+func (x *RiftState) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_raid_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RiftState.ProtoReflect.Descriptor instead.
+func (*RiftState) Descriptor() ([]byte, []int) {
+	return file_proto_raid_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *RiftState) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *RiftState) GetRoomId() string {
+	if x != nil {
+		return x.RoomId
+	}
+	return ""
+}
+
+func (x *RiftState) GetTargetRoomId() string {
+	if x != nil {
+		return x.TargetRoomId
+	}
+	return ""
+}
+
+func (x *RiftState) GetArea() *Rect {
+	if x != nil {
+		return x.Area
+	}
+	return nil
+}
+
+func (x *RiftState) GetArrival() *Vec2 {
+	if x != nil {
+		return x.Arrival
+	}
+	return nil
+}
+
+func (x *RiftState) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *RiftState) GetCapacity() int32 {
+	if x != nil {
+		return x.Capacity
+	}
+	return 0
+}
+
+func (x *RiftState) GetUsedCount() int32 {
+	if x != nil {
+		return x.UsedCount
+	}
+	return 0
+}
+
 type RoomState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -915,13 +1015,14 @@ type RoomState struct {
 	PortalZones   []*Rect                `protobuf:"bytes,22,rep,name=portal_zones,json=portalZones,proto3" json:"portal_zones,omitempty"`
 	PvpZones      []*Rect                `protobuf:"bytes,23,rep,name=pvp_zones,json=pvpZones,proto3" json:"pvp_zones,omitempty"`
 	BossSpawns    []*BossSpawn           `protobuf:"bytes,24,rep,name=boss_spawns,json=bossSpawns,proto3" json:"boss_spawns,omitempty"`
+	Rifts         []*RiftState           `protobuf:"bytes,25,rep,name=rifts,proto3" json:"rifts,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RoomState) Reset() {
 	*x = RoomState{}
-	mi := &file_proto_raid_proto_msgTypes[9]
+	mi := &file_proto_raid_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -933,7 +1034,7 @@ func (x *RoomState) String() string {
 func (*RoomState) ProtoMessage() {}
 
 func (x *RoomState) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[9]
+	mi := &file_proto_raid_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -946,7 +1047,7 @@ func (x *RoomState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RoomState.ProtoReflect.Descriptor instead.
 func (*RoomState) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{9}
+	return file_proto_raid_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RoomState) GetId() string {
@@ -1117,6 +1218,13 @@ func (x *RoomState) GetBossSpawns() []*BossSpawn {
 	return nil
 }
 
+func (x *RoomState) GetRifts() []*RiftState {
+	if x != nil {
+		return x.Rifts
+	}
+	return nil
+}
+
 type RaidLayoutState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Seed          int64                  `protobuf:"varint,1,opt,name=seed,proto3" json:"seed,omitempty"`
@@ -1128,7 +1236,7 @@ type RaidLayoutState struct {
 
 func (x *RaidLayoutState) Reset() {
 	*x = RaidLayoutState{}
-	mi := &file_proto_raid_proto_msgTypes[10]
+	mi := &file_proto_raid_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1140,7 +1248,7 @@ func (x *RaidLayoutState) String() string {
 func (*RaidLayoutState) ProtoMessage() {}
 
 func (x *RaidLayoutState) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[10]
+	mi := &file_proto_raid_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1153,7 +1261,7 @@ func (x *RaidLayoutState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RaidLayoutState.ProtoReflect.Descriptor instead.
 func (*RaidLayoutState) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{10}
+	return file_proto_raid_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *RaidLayoutState) GetSeed() int64 {
@@ -1187,7 +1295,7 @@ type AbilityCooldown struct {
 
 func (x *AbilityCooldown) Reset() {
 	*x = AbilityCooldown{}
-	mi := &file_proto_raid_proto_msgTypes[11]
+	mi := &file_proto_raid_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1199,7 +1307,7 @@ func (x *AbilityCooldown) String() string {
 func (*AbilityCooldown) ProtoMessage() {}
 
 func (x *AbilityCooldown) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[11]
+	mi := &file_proto_raid_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1212,7 +1320,7 @@ func (x *AbilityCooldown) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbilityCooldown.ProtoReflect.Descriptor instead.
 func (*AbilityCooldown) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{11}
+	return file_proto_raid_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *AbilityCooldown) GetAbilityId() string {
@@ -1247,7 +1355,7 @@ type PlayerRaidState struct {
 
 func (x *PlayerRaidState) Reset() {
 	*x = PlayerRaidState{}
-	mi := &file_proto_raid_proto_msgTypes[12]
+	mi := &file_proto_raid_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1259,7 +1367,7 @@ func (x *PlayerRaidState) String() string {
 func (*PlayerRaidState) ProtoMessage() {}
 
 func (x *PlayerRaidState) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[12]
+	mi := &file_proto_raid_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1272,7 +1380,7 @@ func (x *PlayerRaidState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerRaidState.ProtoReflect.Descriptor instead.
 func (*PlayerRaidState) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{12}
+	return file_proto_raid_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *PlayerRaidState) GetPlayerId() string {
@@ -1360,7 +1468,7 @@ type RaidState struct {
 
 func (x *RaidState) Reset() {
 	*x = RaidState{}
-	mi := &file_proto_raid_proto_msgTypes[13]
+	mi := &file_proto_raid_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1372,7 +1480,7 @@ func (x *RaidState) String() string {
 func (*RaidState) ProtoMessage() {}
 
 func (x *RaidState) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[13]
+	mi := &file_proto_raid_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1385,7 +1493,7 @@ func (x *RaidState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RaidState.ProtoReflect.Descriptor instead.
 func (*RaidState) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{13}
+	return file_proto_raid_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RaidState) GetRaidId() string {
@@ -1453,7 +1561,7 @@ type SnapshotMessage struct {
 
 func (x *SnapshotMessage) Reset() {
 	*x = SnapshotMessage{}
-	mi := &file_proto_raid_proto_msgTypes[14]
+	mi := &file_proto_raid_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1465,7 +1573,7 @@ func (x *SnapshotMessage) String() string {
 func (*SnapshotMessage) ProtoMessage() {}
 
 func (x *SnapshotMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[14]
+	mi := &file_proto_raid_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1478,7 +1586,7 @@ func (x *SnapshotMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotMessage.ProtoReflect.Descriptor instead.
 func (*SnapshotMessage) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{14}
+	return file_proto_raid_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SnapshotMessage) GetServerTime() float64 {
@@ -1555,7 +1663,7 @@ type WelcomeMessage struct {
 
 func (x *WelcomeMessage) Reset() {
 	*x = WelcomeMessage{}
-	mi := &file_proto_raid_proto_msgTypes[15]
+	mi := &file_proto_raid_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1567,7 +1675,7 @@ func (x *WelcomeMessage) String() string {
 func (*WelcomeMessage) ProtoMessage() {}
 
 func (x *WelcomeMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[15]
+	mi := &file_proto_raid_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1580,7 +1688,7 @@ func (x *WelcomeMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WelcomeMessage.ProtoReflect.Descriptor instead.
 func (*WelcomeMessage) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{15}
+	return file_proto_raid_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *WelcomeMessage) GetPlayerId() string {
@@ -1676,7 +1784,7 @@ type InputCommand struct {
 
 func (x *InputCommand) Reset() {
 	*x = InputCommand{}
-	mi := &file_proto_raid_proto_msgTypes[16]
+	mi := &file_proto_raid_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1688,7 +1796,7 @@ func (x *InputCommand) String() string {
 func (*InputCommand) ProtoMessage() {}
 
 func (x *InputCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[16]
+	mi := &file_proto_raid_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1701,7 +1809,7 @@ func (x *InputCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InputCommand.ProtoReflect.Descriptor instead.
 func (*InputCommand) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{16}
+	return file_proto_raid_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *InputCommand) GetSeq() uint32 {
@@ -1818,7 +1926,7 @@ type InputBatch struct {
 
 func (x *InputBatch) Reset() {
 	*x = InputBatch{}
-	mi := &file_proto_raid_proto_msgTypes[17]
+	mi := &file_proto_raid_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1830,7 +1938,7 @@ func (x *InputBatch) String() string {
 func (*InputBatch) ProtoMessage() {}
 
 func (x *InputBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[17]
+	mi := &file_proto_raid_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1843,7 +1951,7 @@ func (x *InputBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InputBatch.ProtoReflect.Descriptor instead.
 func (*InputBatch) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{17}
+	return file_proto_raid_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *InputBatch) GetCommands() []*InputCommand {
@@ -1862,7 +1970,7 @@ type PingMessage struct {
 
 func (x *PingMessage) Reset() {
 	*x = PingMessage{}
-	mi := &file_proto_raid_proto_msgTypes[18]
+	mi := &file_proto_raid_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1874,7 +1982,7 @@ func (x *PingMessage) String() string {
 func (*PingMessage) ProtoMessage() {}
 
 func (x *PingMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[18]
+	mi := &file_proto_raid_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1887,7 +1995,7 @@ func (x *PingMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingMessage.ProtoReflect.Descriptor instead.
 func (*PingMessage) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{18}
+	return file_proto_raid_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PingMessage) GetClientTime() float64 {
@@ -1910,7 +2018,7 @@ type ClientMessage struct {
 
 func (x *ClientMessage) Reset() {
 	*x = ClientMessage{}
-	mi := &file_proto_raid_proto_msgTypes[19]
+	mi := &file_proto_raid_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1922,7 +2030,7 @@ func (x *ClientMessage) String() string {
 func (*ClientMessage) ProtoMessage() {}
 
 func (x *ClientMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[19]
+	mi := &file_proto_raid_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1935,7 +2043,7 @@ func (x *ClientMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClientMessage.ProtoReflect.Descriptor instead.
 func (*ClientMessage) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{19}
+	return file_proto_raid_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ClientMessage) GetPayload() isClientMessage_Payload {
@@ -1989,7 +2097,7 @@ type PongMessage struct {
 
 func (x *PongMessage) Reset() {
 	*x = PongMessage{}
-	mi := &file_proto_raid_proto_msgTypes[20]
+	mi := &file_proto_raid_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2001,7 +2109,7 @@ func (x *PongMessage) String() string {
 func (*PongMessage) ProtoMessage() {}
 
 func (x *PongMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[20]
+	mi := &file_proto_raid_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2014,7 +2122,7 @@ func (x *PongMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PongMessage.ProtoReflect.Descriptor instead.
 func (*PongMessage) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{20}
+	return file_proto_raid_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *PongMessage) GetClientTime() float64 {
@@ -2046,7 +2154,7 @@ type ServerMessage struct {
 
 func (x *ServerMessage) Reset() {
 	*x = ServerMessage{}
-	mi := &file_proto_raid_proto_msgTypes[21]
+	mi := &file_proto_raid_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2058,7 +2166,7 @@ func (x *ServerMessage) String() string {
 func (*ServerMessage) ProtoMessage() {}
 
 func (x *ServerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_raid_proto_msgTypes[21]
+	mi := &file_proto_raid_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2071,7 +2179,7 @@ func (x *ServerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerMessage.ProtoReflect.Descriptor instead.
 func (*ServerMessage) Descriptor() ([]byte, []int) {
-	return file_proto_raid_proto_rawDescGZIP(), []int{21}
+	return file_proto_raid_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ServerMessage) GetPayload() isServerMessage_Payload {
@@ -2252,7 +2360,19 @@ const file_proto_raid_proto_rawDesc = "" +
 	"\x01x\x18\x01 \x01(\x01R\x01x\x12\f\n" +
 	"\x01y\x18\x02 \x01(\x01R\x01y\x12\x14\n" +
 	"\x05level\x18\x03 \x01(\x05R\x05level\x12\x16\n" +
-	"\x06flying\x18\x04 \x01(\bR\x06flying\"\x81\a\n" +
+	"\x06flying\x18\x04 \x01(\bR\x06flying\"\xef\x01\n" +
+	"\tRiftState\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\aroom_id\x18\x02 \x01(\tR\x06roomId\x12$\n" +
+	"\x0etarget_room_id\x18\x03 \x01(\tR\ftargetRoomId\x12\x1e\n" +
+	"\x04area\x18\x04 \x01(\v2\n" +
+	".raid.RectR\x04area\x12$\n" +
+	"\aarrival\x18\x05 \x01(\v2\n" +
+	".raid.Vec2R\aarrival\x12\x12\n" +
+	"\x04kind\x18\x06 \x01(\tR\x04kind\x12\x1a\n" +
+	"\bcapacity\x18\a \x01(\x05R\bcapacity\x12\x1d\n" +
+	"\n" +
+	"used_count\x18\b \x01(\x05R\tusedCount\"\xa8\a\n" +
 	"\tRoomState\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -2290,7 +2410,8 @@ const file_proto_raid_proto_rawDesc = "" +
 	"\tpvp_zones\x18\x17 \x03(\v2\n" +
 	".raid.RectR\bpvpZones\x120\n" +
 	"\vboss_spawns\x18\x18 \x03(\v2\x0f.raid.BossSpawnR\n" +
-	"bossSpawns\"}\n" +
+	"bossSpawns\x12%\n" +
+	"\x05rifts\x18\x19 \x03(\v2\x0f.raid.RiftStateR\x05rifts\"}\n" +
 	"\x0fRaidLayoutState\x12\x12\n" +
 	"\x04seed\x18\x01 \x01(\x03R\x04seed\x12%\n" +
 	"\x05rooms\x18\x02 \x03(\v2\x0f.raid.RoomStateR\x05rooms\x12/\n" +
@@ -2396,7 +2517,7 @@ func file_proto_raid_proto_rawDescGZIP() []byte {
 	return file_proto_raid_proto_rawDescData
 }
 
-var file_proto_raid_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_proto_raid_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_proto_raid_proto_goTypes = []any{
 	(*Vec2)(nil),             // 0: raid.Vec2
 	(*Rect)(nil),             // 1: raid.Rect
@@ -2407,19 +2528,20 @@ var file_proto_raid_proto_goTypes = []any{
 	(*PlacedAssetState)(nil), // 6: raid.PlacedAssetState
 	(*JumpLinkState)(nil),    // 7: raid.JumpLinkState
 	(*BossSpawn)(nil),        // 8: raid.BossSpawn
-	(*RoomState)(nil),        // 9: raid.RoomState
-	(*RaidLayoutState)(nil),  // 10: raid.RaidLayoutState
-	(*AbilityCooldown)(nil),  // 11: raid.AbilityCooldown
-	(*PlayerRaidState)(nil),  // 12: raid.PlayerRaidState
-	(*RaidState)(nil),        // 13: raid.RaidState
-	(*SnapshotMessage)(nil),  // 14: raid.SnapshotMessage
-	(*WelcomeMessage)(nil),   // 15: raid.WelcomeMessage
-	(*InputCommand)(nil),     // 16: raid.InputCommand
-	(*InputBatch)(nil),       // 17: raid.InputBatch
-	(*PingMessage)(nil),      // 18: raid.PingMessage
-	(*ClientMessage)(nil),    // 19: raid.ClientMessage
-	(*PongMessage)(nil),      // 20: raid.PongMessage
-	(*ServerMessage)(nil),    // 21: raid.ServerMessage
+	(*RiftState)(nil),        // 9: raid.RiftState
+	(*RoomState)(nil),        // 10: raid.RoomState
+	(*RaidLayoutState)(nil),  // 11: raid.RaidLayoutState
+	(*AbilityCooldown)(nil),  // 12: raid.AbilityCooldown
+	(*PlayerRaidState)(nil),  // 13: raid.PlayerRaidState
+	(*RaidState)(nil),        // 14: raid.RaidState
+	(*SnapshotMessage)(nil),  // 15: raid.SnapshotMessage
+	(*WelcomeMessage)(nil),   // 16: raid.WelcomeMessage
+	(*InputCommand)(nil),     // 17: raid.InputCommand
+	(*InputBatch)(nil),       // 18: raid.InputBatch
+	(*PingMessage)(nil),      // 19: raid.PingMessage
+	(*ClientMessage)(nil),    // 20: raid.ClientMessage
+	(*PongMessage)(nil),      // 21: raid.PongMessage
+	(*ServerMessage)(nil),    // 22: raid.ServerMessage
 }
 var file_proto_raid_proto_depIdxs = []int32{
 	0,  // 0: raid.TravelState.start:type_name -> raid.Vec2
@@ -2439,37 +2561,40 @@ var file_proto_raid_proto_depIdxs = []int32{
 	1,  // 14: raid.PlacedAssetState.bounds:type_name -> raid.Rect
 	1,  // 15: raid.JumpLinkState.area:type_name -> raid.Rect
 	0,  // 16: raid.JumpLinkState.arrival:type_name -> raid.Vec2
-	1,  // 17: raid.RoomState.bounds:type_name -> raid.Rect
-	1,  // 18: raid.RoomState.solids:type_name -> raid.Rect
-	1,  // 19: raid.RoomState.platforms:type_name -> raid.Rect
-	5,  // 20: raid.RoomState.exits:type_name -> raid.ExitState
-	7,  // 21: raid.RoomState.jump_links:type_name -> raid.JumpLinkState
-	6,  // 22: raid.RoomState.decorations:type_name -> raid.PlacedAssetState
-	1,  // 23: raid.RoomState.backwalls:type_name -> raid.Rect
-	1,  // 24: raid.RoomState.reveal_zones:type_name -> raid.Rect
-	1,  // 25: raid.RoomState.rift_zones:type_name -> raid.Rect
-	1,  // 26: raid.RoomState.portal_zones:type_name -> raid.Rect
-	1,  // 27: raid.RoomState.pvp_zones:type_name -> raid.Rect
-	8,  // 28: raid.RoomState.boss_spawns:type_name -> raid.BossSpawn
-	9,  // 29: raid.RaidLayoutState.rooms:type_name -> raid.RoomState
-	0,  // 30: raid.RaidLayoutState.player_spawns:type_name -> raid.Vec2
-	11, // 31: raid.PlayerRaidState.cooldowns:type_name -> raid.AbilityCooldown
-	12, // 32: raid.RaidState.players:type_name -> raid.PlayerRaidState
-	10, // 33: raid.SnapshotMessage.layout:type_name -> raid.RaidLayoutState
-	3,  // 34: raid.SnapshotMessage.entities:type_name -> raid.EntityState
-	4,  // 35: raid.SnapshotMessage.loot:type_name -> raid.LootState
-	13, // 36: raid.SnapshotMessage.raid:type_name -> raid.RaidState
-	16, // 37: raid.InputBatch.commands:type_name -> raid.InputCommand
-	17, // 38: raid.ClientMessage.input:type_name -> raid.InputBatch
-	18, // 39: raid.ClientMessage.ping:type_name -> raid.PingMessage
-	15, // 40: raid.ServerMessage.welcome:type_name -> raid.WelcomeMessage
-	14, // 41: raid.ServerMessage.snapshot:type_name -> raid.SnapshotMessage
-	20, // 42: raid.ServerMessage.pong:type_name -> raid.PongMessage
-	43, // [43:43] is the sub-list for method output_type
-	43, // [43:43] is the sub-list for method input_type
-	43, // [43:43] is the sub-list for extension type_name
-	43, // [43:43] is the sub-list for extension extendee
-	0,  // [0:43] is the sub-list for field type_name
+	1,  // 17: raid.RiftState.area:type_name -> raid.Rect
+	0,  // 18: raid.RiftState.arrival:type_name -> raid.Vec2
+	1,  // 19: raid.RoomState.bounds:type_name -> raid.Rect
+	1,  // 20: raid.RoomState.solids:type_name -> raid.Rect
+	1,  // 21: raid.RoomState.platforms:type_name -> raid.Rect
+	5,  // 22: raid.RoomState.exits:type_name -> raid.ExitState
+	7,  // 23: raid.RoomState.jump_links:type_name -> raid.JumpLinkState
+	6,  // 24: raid.RoomState.decorations:type_name -> raid.PlacedAssetState
+	1,  // 25: raid.RoomState.backwalls:type_name -> raid.Rect
+	1,  // 26: raid.RoomState.reveal_zones:type_name -> raid.Rect
+	1,  // 27: raid.RoomState.rift_zones:type_name -> raid.Rect
+	1,  // 28: raid.RoomState.portal_zones:type_name -> raid.Rect
+	1,  // 29: raid.RoomState.pvp_zones:type_name -> raid.Rect
+	8,  // 30: raid.RoomState.boss_spawns:type_name -> raid.BossSpawn
+	9,  // 31: raid.RoomState.rifts:type_name -> raid.RiftState
+	10, // 32: raid.RaidLayoutState.rooms:type_name -> raid.RoomState
+	0,  // 33: raid.RaidLayoutState.player_spawns:type_name -> raid.Vec2
+	12, // 34: raid.PlayerRaidState.cooldowns:type_name -> raid.AbilityCooldown
+	13, // 35: raid.RaidState.players:type_name -> raid.PlayerRaidState
+	11, // 36: raid.SnapshotMessage.layout:type_name -> raid.RaidLayoutState
+	3,  // 37: raid.SnapshotMessage.entities:type_name -> raid.EntityState
+	4,  // 38: raid.SnapshotMessage.loot:type_name -> raid.LootState
+	14, // 39: raid.SnapshotMessage.raid:type_name -> raid.RaidState
+	17, // 40: raid.InputBatch.commands:type_name -> raid.InputCommand
+	18, // 41: raid.ClientMessage.input:type_name -> raid.InputBatch
+	19, // 42: raid.ClientMessage.ping:type_name -> raid.PingMessage
+	16, // 43: raid.ServerMessage.welcome:type_name -> raid.WelcomeMessage
+	15, // 44: raid.ServerMessage.snapshot:type_name -> raid.SnapshotMessage
+	21, // 45: raid.ServerMessage.pong:type_name -> raid.PongMessage
+	46, // [46:46] is the sub-list for method output_type
+	46, // [46:46] is the sub-list for method input_type
+	46, // [46:46] is the sub-list for extension type_name
+	46, // [46:46] is the sub-list for extension extendee
+	0,  // [0:46] is the sub-list for field type_name
 }
 
 func init() { file_proto_raid_proto_init() }
@@ -2477,11 +2602,11 @@ func file_proto_raid_proto_init() {
 	if File_proto_raid_proto != nil {
 		return
 	}
-	file_proto_raid_proto_msgTypes[19].OneofWrappers = []any{
+	file_proto_raid_proto_msgTypes[20].OneofWrappers = []any{
 		(*ClientMessage_Input)(nil),
 		(*ClientMessage_Ping)(nil),
 	}
-	file_proto_raid_proto_msgTypes[21].OneofWrappers = []any{
+	file_proto_raid_proto_msgTypes[22].OneofWrappers = []any{
 		(*ServerMessage_Welcome)(nil),
 		(*ServerMessage_Snapshot)(nil),
 		(*ServerMessage_Pong)(nil),
@@ -2493,7 +2618,7 @@ func file_proto_raid_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_raid_proto_rawDesc), len(file_proto_raid_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   22,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
