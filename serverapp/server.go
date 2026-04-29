@@ -54,6 +54,7 @@ func (s *Server) ListenAndServe() error {
 	mux.HandleFunc("/api/auth/sign-up", s.handleSignUp)
 	mux.HandleFunc("/api/auth/sign-in", s.handleSignIn)
 	mux.HandleFunc("/api/raids", s.handleRaids)
+	mux.HandleFunc("/api/raids/jobs/", s.handleRaidJob)
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
 	server := &http.Server{
@@ -68,7 +69,8 @@ func (s *Server) ListenAndServe() error {
 
 func (s *Server) handleHealth(writer http.ResponseWriter, _ *http.Request) {
 	writer.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(writer).Encode(map[string]string{"status": "ok"})
+	depth, avgWait, avgGen := s.sessions.QueueMetrics()
+	_ = json.NewEncoder(writer).Encode(map[string]any{"status": "ok", "raid_queue_depth": depth, "raid_queue_avg_wait_ms": avgWait.Milliseconds(), "raid_generation_avg_ms": avgGen.Milliseconds()})
 }
 
 func (s *Server) handleSignUp(writer http.ResponseWriter, request *http.Request) {
@@ -93,9 +95,16 @@ func (s *Server) handleRaids(writer http.ResponseWriter, request *http.Request) 
 			Raids: s.sessions.ListRaids(),
 		})
 	case http.MethodPost:
-		writeJSON(writer, http.StatusCreated, shared.RaidCreateResponse{
-			Raid: s.sessions.CreateRaid(),
-		})
+		if request.URL.Query().Get("async") == "1" || request.URL.Query().Get("mode") == "async" {
+			writeJSON(writer, http.StatusAccepted, shared.RaidCreateAcceptedResponse{JobID: s.sessions.CreateRaidAsync()})
+			return
+		}
+		raid, jobID, err := s.sessions.createRaidSync(5 * time.Second)
+		if err != nil {
+			writeJSON(writer, http.StatusAccepted, shared.RaidCreateAcceptedResponse{JobID: jobID})
+			return
+		}
+		writeJSON(writer, http.StatusCreated, shared.RaidCreateResponse{Raid: raid})
 	default:
 		writer.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -283,4 +292,39 @@ func trySend(channel chan shared.ServerMessage, message shared.ServerMessage) {
 	case channel <- message:
 	default:
 	}
+}
+
+func (s *Server) handleRaidJob(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if _, err := s.authorize(request); err != nil {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	jobID := strings.TrimPrefix(request.URL.Path, "/api/raids/jobs/")
+	job, ok := s.sessions.GetRaidJob(jobID)
+	if !ok {
+		http.Error(writer, "job not found", http.StatusNotFound)
+		return
+	}
+	resp := shared.RaidCreateJobResponse{JobID: job.ID, Status: string(job.Status), Error: job.Error}
+	if job.Raid != nil {
+		resp.Raid = job.Raid
+	}
+	if job.QueueWait > 0 {
+		resp.QueueWaitMs = job.QueueWait.Milliseconds()
+	}
+	if job.GenerationDuration > 0 {
+		resp.GenerationTimeMs = job.GenerationDuration.Milliseconds()
+	}
+	if !job.QueuedAt.IsZero() {
+		end := time.Now()
+		if !job.FinishedAt.IsZero() {
+			end = job.FinishedAt
+		}
+		resp.TotalElapsedTimeMs = end.Sub(job.QueuedAt).Milliseconds()
+	}
+	writeJSON(writer, http.StatusOK, resp)
 }

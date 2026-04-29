@@ -23,6 +23,20 @@ type RaidCreateResponse struct {
 	Raid RaidSummary `json:"raid"`
 }
 
+type RaidCreateAcceptedResponse struct {
+	JobID string `json:"job_id"`
+}
+
+type RaidCreateJobResponse struct {
+	JobID              string       `json:"job_id"`
+	Status             string       `json:"status"`
+	Raid               *RaidSummary `json:"raid,omitempty"`
+	Error              string       `json:"error,omitempty"`
+	QueueWaitMs        int64        `json:"queue_wait_ms,omitempty"`
+	GenerationTimeMs   int64        `json:"generation_time_ms,omitempty"`
+	TotalElapsedTimeMs int64        `json:"total_elapsed_time_ms,omitempty"`
+}
+
 type InputCommand struct {
 	Seq           uint32  `json:"seq"`
 	MoveX         float64 `json:"move_x"`
