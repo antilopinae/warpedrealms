@@ -121,7 +121,20 @@ func snapshotToPB(s *shared.SnapshotMessage) *pb.SnapshotMessage {
 		}
 	}
 	for _, e := range s.Entities {
-		out.Entities = append(out.Entities, &pb.EntityState{Id: e.ID, Name: e.Name, Kind: string(e.Kind), Faction: string(e.Faction), ClassId: e.ClassID, ProfileId: e.ProfileID, FamilyId: e.FamilyID, RoomId: e.RoomID, Position: vec2ToPB(e.Position), Velocity: vec2ToPB(e.Velocity), Facing: e.Facing, Grounded: e.Grounded, Hp: int32(e.HP), MaxHp: int32(e.MaxHP), Animation: string(e.Animation), AnimationStartedAt: e.AnimationStartedAt, SpriteSize: vec2ToPB(e.SpriteSize), SpriteOffset: vec2ToPB(e.SpriteOffset), Collider: rectToPB(e.Collider), Hurtbox: rectToPB(e.Hurtbox), InteractionBox: rectToPB(e.InteractionBox), Scale: e.Scale, Travel: &pb.TravelState{Active: e.Travel.Active, LinkId: e.Travel.LinkID, FromRoomId: e.Travel.FromRoomID, ToRoomId: e.Travel.ToRoomID, Start: vec2ToPB(e.Travel.Start), End: vec2ToPB(e.Travel.End), StartedAt: e.Travel.StartedAt, EndsAt: e.Travel.EndsAt}, DashTimer: e.DashTimer, DashCooldown: e.DashCooldown})
+		var travel *pb.TravelState
+		if e.Travel != nil {
+			travel = &pb.TravelState{
+				Active:     e.Travel.Active,
+				LinkId:     e.Travel.LinkID,
+				FromRoomId: e.Travel.FromRoomID,
+				ToRoomId:   e.Travel.ToRoomID,
+				Start:      vec2ToPB(e.Travel.Start),
+				End:        vec2ToPB(e.Travel.End),
+				StartedAt:  e.Travel.StartedAt,
+				EndsAt:     e.Travel.EndsAt,
+			}
+		}
+		out.Entities = append(out.Entities, &pb.EntityState{Id: e.ID, Name: e.Name, Kind: string(e.Kind), Faction: string(e.Faction), ClassId: e.ClassID, ProfileId: e.ProfileID, FamilyId: e.FamilyID, RoomId: e.RoomID, Position: vec2ToPB(e.Position), Velocity: vec2ToPB(e.Velocity), Facing: e.Facing, Grounded: e.Grounded, Hp: int32(e.HP), MaxHp: int32(e.MaxHP), Animation: string(e.Animation), AnimationStartedAt: e.AnimationStartedAt, SpriteSize: vec2ToPB(e.SpriteSize), SpriteOffset: vec2ToPB(e.SpriteOffset), Collider: rectToPB(e.Collider), Hurtbox: rectToPB(e.Hurtbox), InteractionBox: rectToPB(e.InteractionBox), Scale: e.Scale, Travel: travel, DashTimer: e.DashTimer, DashCooldown: e.DashCooldown})
 	}
 	for _, l := range s.Loot {
 		out.Loot = append(out.Loot, &pb.LootState{Id: l.ID, ProfileId: l.ProfileID, RoomId: l.RoomID, Position: vec2ToPB(l.Position), Value: int32(l.Value)})
