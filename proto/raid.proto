@@ -107,6 +107,34 @@ message WelcomeMessage {
   double snapshot_rate = 9;
   double interpolation_back_time = 10;
 }
+message InputCommand {
+  uint32 seq = 1;
+  double move_x = 2;
+  double move_y = 3;
+  bool jump = 4;
+  bool drop_down = 5;
+  bool dash = 6;
+  bool primary_attack = 7;
+  bool skill1 = 8;
+  bool skill2 = 9;
+  bool skill3 = 10;
+  bool interact = 11;
+  bool use_jump_link = 12;
+  double aim_x = 13;
+  double aim_y = 14;
+  double client_time = 15;
+}
+
+message InputBatch { repeated InputCommand commands = 1; }
+message ClientPing { double client_time = 1; }
+
+message ClientMessage {
+  oneof payload {
+    InputBatch input = 1;
+    ClientPing ping = 2;
+  }
+}
+
 message PongMessage { double client_time = 1; double server_time = 2; }
 
 message ServerMessage {
@@ -116,4 +144,3 @@ message ServerMessage {
   PongMessage pong = 4;
   string error = 5;
 }
-

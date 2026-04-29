@@ -5,6 +5,8 @@
 
 package shared
 
+import "encoding/json"
+
 type AuthRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -93,9 +95,68 @@ type SnapshotMessage struct {
 }
 
 type ClientMessage struct {
-	Type  string       `json:"type"`
-	Input *InputBatch  `json:"input,omitempty"`
-	Ping  *PingMessage `json:"ping,omitempty"`
+	Payload ClientPayload `json:"-"`
+}
+
+type ClientPayload interface{ isClientPayload() }
+
+type ClientInputPayload struct{ InputBatch }
+type ClientPingPayload struct{ PingMessage }
+
+func (ClientInputPayload) isClientPayload() {}
+func (ClientPingPayload) isClientPayload()  {}
+
+func NewClientInputMessage(batch InputBatch) ClientMessage {
+	return ClientMessage{Payload: ClientInputPayload{InputBatch: batch}}
+}
+
+func NewClientPingMessage(ping PingMessage) ClientMessage {
+	return ClientMessage{Payload: ClientPingPayload{PingMessage: ping}}
+}
+
+func (m ClientMessage) MarshalJSON() ([]byte, error) {
+	encoded := struct {
+		Input *InputBatch  `json:"input,omitempty"`
+		Ping  *PingMessage `json:"ping,omitempty"`
+	}{}
+	switch payload := m.Payload.(type) {
+	case ClientInputPayload:
+		batch := payload.InputBatch
+		encoded.Input = &batch
+	case *ClientInputPayload:
+		if payload != nil {
+			batch := payload.InputBatch
+			encoded.Input = &batch
+		}
+	case ClientPingPayload:
+		ping := payload.PingMessage
+		encoded.Ping = &ping
+	case *ClientPingPayload:
+		if payload != nil {
+			ping := payload.PingMessage
+			encoded.Ping = &ping
+		}
+	}
+	return json.Marshal(encoded)
+}
+
+func (m *ClientMessage) UnmarshalJSON(data []byte) error {
+	decoded := struct {
+		Input *InputBatch  `json:"input"`
+		Ping  *PingMessage `json:"ping"`
+	}{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	m.Payload = nil
+	if decoded.Input != nil {
+		m.Payload = ClientInputPayload{InputBatch: *decoded.Input}
+		return nil
+	}
+	if decoded.Ping != nil {
+		m.Payload = ClientPingPayload{PingMessage: *decoded.Ping}
+	}
+	return nil
 }
 
 type ServerMessage struct {
