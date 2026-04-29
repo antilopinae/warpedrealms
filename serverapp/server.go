@@ -292,5 +292,5 @@ func negotiateEncoding(request *http.Request) transport.Encoding {
 	if protocol == string(transport.EncodingProtobuf) || request.URL.Query().Get("version") == "2" {
 		return transport.EncodingProtobuf
 	}
-	return transport.EncodingJSON
+	return transport.EncodingProtobuf
 }

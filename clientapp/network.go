@@ -47,7 +47,7 @@ func NewNetworkClient(baseURL string) *NetworkClient {
 		SnapshotCh:       make(chan shared.SnapshotMessage, 32),
 		PongCh:           make(chan shared.PongMessage, 8),
 		ErrCh:            make(chan error, 8),
-		SnapshotEncoding: transport.EncodingJSON,
+		SnapshotEncoding: transport.EncodingProtobuf,
 	}
 }
 
@@ -280,11 +280,9 @@ func (c *NetworkClient) websocketURL(token string, raidID string, classID string
 	if classID != "" {
 		query.Set("class", classID)
 	}
-	if c.SnapshotEncoding != "" {
+	{
 		query.Set("protocol", string(c.SnapshotEncoding))
-		if c.SnapshotEncoding == transport.EncodingProtobuf {
-			query.Set("version", "2")
-		}
+		query.Set("version", "2")
 	}
 	base.RawQuery = query.Encode()
 	return base.String(), nil

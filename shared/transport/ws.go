@@ -1,61 +1,59 @@
 package transport
 
 import (
-	"encoding/json"
 	"fmt"
-
 	"github.com/gorilla/websocket"
 	"warpedrealms/shared"
+	"warpedrealms/shared/minipb"
 )
 
 type Encoding string
 
 const (
-	EncodingJSON     Encoding = "json"
 	EncodingProtobuf Encoding = "protobuf"
 )
 
-// Binary frame envelope: [1 byte version][1 byte typeLen][type bytes][payload bytes].
-func WriteServerMessage(conn *websocket.Conn, enc Encoding, m shared.ServerMessage) error {
-	if enc == EncodingJSON {
-		return conn.WriteJSON(m)
+func WriteServerMessage(conn *websocket.Conn, _ Encoding, m shared.ServerMessage) error {
+	w := minipb.NewWriter(minipb.LittleEndian)
+	w.Field(1, []byte(m.Type))
+	switch m.Type {
+	case "snapshot":
+		if m.Snapshot == nil {
+			return fmt.Errorf("snapshot nil")
+		}
+		w.Field(2, EncodeSnapshot(m.Snapshot, minipb.LittleEndian))
+	case "welcome":
+		if m.Welcome != nil {
+			w.Field(3, []byte(m.Welcome.PlayerID))
+		}
+	case "error":
+		w.Field(9, []byte(m.Error))
 	}
-	if m.Type != "snapshot" || m.Snapshot == nil {
-		return conn.WriteJSON(m)
-	}
-	payload, err := json.Marshal(m.Snapshot)
-	if err != nil {
-		return err
-	}
-	typeBytes := []byte(m.Type)
-	if len(typeBytes) > 255 {
-		return fmt.Errorf("type too long")
-	}
-	frame := make([]byte, 0, 2+len(typeBytes)+len(payload))
-	frame = append(frame, 1, byte(len(typeBytes)))
-	frame = append(frame, typeBytes...)
-	frame = append(frame, payload...)
-	return conn.WriteMessage(websocket.BinaryMessage, frame)
+	return conn.WriteMessage(websocket.BinaryMessage, w.Bytes())
 }
 
 func ReadServerMessage(msgType int, data []byte, out *shared.ServerMessage) error {
-	if msgType == websocket.TextMessage {
-		return json.Unmarshal(data, out)
+	if msgType != websocket.BinaryMessage {
+		return fmt.Errorf("binary only")
 	}
-	if msgType != websocket.BinaryMessage || len(data) < 2 {
-		return fmt.Errorf("unsupported frame")
-	}
-	typeLen := int(data[1])
-	if len(data) < 2+typeLen {
-		return fmt.Errorf("bad frame")
-	}
-	out.Type = string(data[2 : 2+typeLen])
-	if out.Type == "snapshot" {
-		var snap shared.SnapshotMessage
-		if err := json.Unmarshal(data[2+typeLen:], &snap); err != nil {
-			return err
+	r := minipb.NewReader(data, minipb.LittleEndian)
+	for {
+		tag, p, err := r.Next()
+		if err != nil {
+			break
 		}
-		out.Snapshot = &snap
+		switch tag {
+		case 1:
+			out.Type = string(p)
+		case 2:
+			s, err := DecodeSnapshot(p, minipb.LittleEndian)
+			if err != nil {
+				return err
+			}
+			out.Snapshot = &s
+		case 9:
+			out.Error = string(p)
+		}
 	}
 	return nil
 }
