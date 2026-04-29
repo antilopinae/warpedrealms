@@ -24,11 +24,33 @@ type roomPreview struct {
 }
 
 type RaidRenderer struct {
-	assets *Assets
+	assets           *Assets
+	whitePixelImg    *ebiten.Image
+	useSpriteRectOps bool
+	rectOp           ebiten.DrawImageOptions
 }
 
-func NewRaidRenderer(assets *Assets) *RaidRenderer {
-	return &RaidRenderer{assets: assets}
+func NewRaidRenderer(assets *Assets, whitePixelImg *ebiten.Image) *RaidRenderer {
+	return &RaidRenderer{
+		assets:           assets,
+		whitePixelImg:    whitePixelImg,
+		useSpriteRectOps: true,
+	}
+}
+
+func (r *RaidRenderer) SetUseSpriteRectOps(enabled bool) { r.useSpriteRectOps = enabled }
+
+func (r *RaidRenderer) drawRect(screen *ebiten.Image, x, y, w, h float32, clr color.Color) {
+	if !r.useSpriteRectOps || r.whitePixelImg == nil {
+		vector.DrawFilledRect(screen, x, y, w, h, clr, false)
+		return
+	}
+	r.rectOp.GeoM.Reset()
+	r.rectOp.GeoM.Scale(float64(w), float64(h))
+	r.rectOp.GeoM.Translate(float64(x), float64(y))
+	r.rectOp.ColorScale.Reset()
+	r.rectOp.ColorScale.ScaleWithColor(clr)
+	screen.DrawImage(r.whitePixelImg, &r.rectOp)
 }
 
 // DrawScene renders the active room and its background (if any).
@@ -130,15 +152,15 @@ func (r *RaidRenderer) drawRoomAsBackground(screen *ebiten.Image, room shared.Ro
 			// Individual platform cell — subtle fill + bright top rim.
 			col := int(math.Round(s.X / gs))
 			row := int(math.Round(s.Y / gs))
-			vector.DrawFilledRect(screen, sx, sy, sw, sh, fillClr, false)
+			r.drawRect(screen, sx, sy, sw, sh, fillClr)
 			if !occupied[cellKey{col, row - 1}] {
-				vector.DrawFilledRect(screen, sx, sy, sw, rimH, rimClr, false)
+				r.drawRect(screen, sx, sy, sw, rimH, rimClr)
 			}
 		} else if s.W > gs*4 && s.H >= gs {
 			// Wide boundary rect (floor or wide ledge) — draw as ground mass.
-			vector.DrawFilledRect(screen, sx, sy, sw, sh, fillBig, false)
+			r.drawRect(screen, sx, sy, sw, sh, fillBig)
 			// Bright top edge so the floor reads as a surface.
-			vector.DrawFilledRect(screen, sx, sy, sw, float32(math.Max(2, float64(rimH)*0.8)), rimBig, false)
+			r.drawRect(screen, sx, sy, sw, float32(math.Max(2, float64(rimH)*0.8)), rimBig)
 		}
 		// Narrow vertical walls (left/right boundary) — deliberately skipped
 		// to avoid blocking the view of the background room.
@@ -151,10 +173,10 @@ func (r *RaidRenderer) drawRoomAsBackground(screen *ebiten.Image, room shared.Ro
 // drawRoomAsBackground and drawBgRoomObjects so everything is dimmed uniformly.
 func (r *RaidRenderer) drawBgDepthHaze(screen *ebiten.Image, offset shared.Vec2) {
 	sb := screen.Bounds()
-	vector.DrawFilledRect(screen,
+	r.drawRect(screen,
 		float32(offset.X), float32(offset.Y),
 		float32(float64(sb.Dx())-offset.X), float32(float64(sb.Dy())-offset.Y),
-		color.RGBA{6, 10, 20, 110}, false)
+		color.RGBA{6, 10, 20, 110})
 }
 
 // drawBgRoomObjects renders all non-solid game objects of a background room:
@@ -175,9 +197,9 @@ func (r *RaidRenderer) drawBgRoomObjects(screen *ebiten.Image, room shared.RoomS
 		screenY := offset.Y + (p.Y-camera.Y)*scale
 		sw := float32(p.W * scale)
 		sh := float32(p.H * scale)
-		vector.DrawFilledRect(screen, float32(screenX), float32(screenY), sw, sh, platFill, false)
+		r.drawRect(screen, float32(screenX), float32(screenY), sw, sh, platFill)
 		rimH := float32(math.Max(2, scale*2.5))
-		vector.DrawFilledRect(screen, float32(screenX), float32(screenY), sw, rimH, platRim, false)
+		r.drawRect(screen, float32(screenX), float32(screenY), sw, rimH, platRim)
 	}
 
 	// ── Boss spawn markers ────────────────────────────────────────────────────
@@ -198,7 +220,7 @@ func (r *RaidRenderer) drawBgRoomObjects(screen *ebiten.Image, room shared.RoomS
 			vector.StrokeLine(screen, cx32, cy32+half, cx32-half, cy32, lineW, rim, false)
 			vector.StrokeLine(screen, cx32-half, cy32, cx32, cy32-half, lineW, rim, false)
 		} else {
-			vector.DrawFilledRect(screen, screenX, screenY, bw, bh, fill, false)
+			r.drawRect(screen, screenX, screenY, bw, bh, fill)
 			vector.StrokeRect(screen, screenX, screenY, bw, bh, lineW, rim, false)
 		}
 	}
@@ -228,7 +250,7 @@ func (r *RaidRenderer) drawBgRoomObjects(screen *ebiten.Image, room shared.RoomS
 		sx := float32(offset.X + (rift.Area.X-camera.X)*scale)
 		sy := float32(offset.Y + (rift.Area.Y-camera.Y)*scale)
 		sw, sh := float32(rift.Area.W*scale), float32(rift.Area.H*scale)
-		vector.DrawFilledRect(screen, sx, sy, sw, sh, color.RGBA{clr.R, clr.G, clr.B, uint8(float64(clr.A) * 0.18)}, false)
+		r.drawRect(screen, sx, sy, sw, sh, color.RGBA{clr.R, clr.G, clr.B, uint8(float64(clr.A) * 0.18)})
 		lineW := float32(math.Max(1.5, scale))
 		vector.StrokeRect(screen, sx, sy, sw, sh, lineW, clr, false)
 		mid := sx + sw*0.5
@@ -272,7 +294,7 @@ func (r *RaidRenderer) drawPreviewWindow(screen *ebiten.Image, preview roomPrevi
 	r.drawDecorations(canvas, preview.room, previewCamera, previewOffset, previewScale, 0.72*preview.alpha)
 
 	topLeft := shared.Vec2{X: offset.X + (rect.X-camera.X)*scale, Y: offset.Y + (rect.Y-camera.Y)*scale}
-	vector.DrawFilledRect(screen, float32(topLeft.X+12), float32(topLeft.Y+14), float32(rect.W*scale), float32(rect.H*scale), color.RGBA{0, 0, 0, uint8(76 * preview.alpha)}, false)
+	r.drawRect(screen, float32(topLeft.X+12), float32(topLeft.Y+14), float32(rect.W*scale), float32(rect.H*scale), color.RGBA{0, 0, 0, uint8(76 * preview.alpha)})
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(topLeft.X, topLeft.Y)
 	op.ColorScale.Scale(1, 1, 1, float32(preview.alpha))
@@ -281,7 +303,7 @@ func (r *RaidRenderer) drawPreviewWindow(screen *ebiten.Image, preview roomPrevi
 	glow := color.RGBA{124, 225, 255, uint8(180 * preview.alpha)}
 	vector.StrokeRect(screen, float32(topLeft.X), float32(topLeft.Y), float32(rect.W*scale), float32(rect.H*scale), 3, glow, false)
 	vector.StrokeRect(screen, float32(topLeft.X-5), float32(topLeft.Y-5), float32(rect.W*scale+10), float32(rect.H*scale+10), 1, color.RGBA{210, 245, 255, uint8(90 * preview.alpha)}, false)
-	vector.DrawFilledRect(screen, float32(topLeft.X), float32(topLeft.Y-24), float32(math.Min(rect.W*scale, 220)), 22, color.RGBA{18, 28, 38, uint8(220 * preview.alpha)}, false)
+	r.drawRect(screen, float32(topLeft.X), float32(topLeft.Y-24), float32(math.Min(rect.W*scale, 220)), 22, color.RGBA{18, 28, 38, uint8(220 * preview.alpha)})
 }
 
 func (r *RaidRenderer) drawBackgroundForRoom(screen *ebiten.Image, room shared.RoomState, camera shared.Vec2, offset shared.Vec2, scale float64, alpha float64) {
@@ -296,10 +318,10 @@ func (r *RaidRenderer) drawBackgroundForRoom(screen *ebiten.Image, room shared.R
 	background, ok := r.assets.Backgrounds[room.BackgroundID]
 	if !ok {
 		fill := color.RGBA{14, 20, 30, uint8(255 * alpha)}
-		vector.DrawFilledRect(screen,
+		r.drawRect(screen,
 			float32(offset.X), float32(offset.Y),
 			float32(drawW), float32(drawH),
-			fill, false,
+			fill,
 		)
 		return
 	}
@@ -379,10 +401,10 @@ func (r *RaidRenderer) drawRoomGeometry(screen *ebiten.Image, room shared.RoomSt
 			if ok && style.Floor != nil {
 				r.drawTiledRect(screen, style.Floor, screenX, screenY, solid.W*scale, solid.H*scale, alpha)
 			} else {
-				vector.DrawFilledRect(screen, float32(screenX), float32(screenY), sw, sh, fillClr, false)
+				r.drawRect(screen, float32(screenX), float32(screenY), sw, sh, fillClr)
 				// Bright top-edge highlight so platforms read as surfaces.
 				if sh > 2 {
-					vector.DrawFilledRect(screen, float32(screenX), float32(screenY), sw, float32(math.Max(2, scale*2)), rimClr, false)
+					r.drawRect(screen, float32(screenX), float32(screenY), sw, float32(math.Max(2, scale*2)), rimClr)
 				}
 			}
 		}
@@ -395,11 +417,11 @@ func (r *RaidRenderer) drawRoomGeometry(screen *ebiten.Image, room shared.RoomSt
 			screenY := offset.Y + (p.Y-camera.Y)*scale
 			sw := float32(p.W * scale)
 			sh := float32(p.H * scale)
-			vector.DrawFilledRect(screen, float32(screenX), float32(screenY), sw, sh, platFill, false)
+			r.drawRect(screen, float32(screenX), float32(screenY), sw, sh, platFill)
 			// Bright top rim — twice as thick as for solids, making the
 			// landing surface clearly visible.
 			rimH := float32(math.Max(3, scale*3))
-			vector.DrawFilledRect(screen, float32(screenX), float32(screenY), sw, rimH, platRim, false)
+			r.drawRect(screen, float32(screenX), float32(screenY), sw, rimH, platRim)
 		}
 	}
 	// Boss spawn markers — coloured 1-block squares with a bright outline.
@@ -426,11 +448,11 @@ func (r *RaidRenderer) drawRoomGeometry(screen *ebiten.Image, room shared.RoomSt
 			for step := float32(1); step < half-lineW; step += 2 {
 				f := fill
 				f.A = uint8(float32(fill.A) * (1 - step/half))
-				vector.DrawFilledRect(screen, cx32-step, cy32-step, step*2, step*2, f, false)
+				r.drawRect(screen, cx32-step, cy32-step, step*2, step*2, f)
 			}
 		} else {
 			// Ground bosses: solid filled square with bright outline.
-			vector.DrawFilledRect(screen, screenX, screenY, bw, bh, fill, false)
+			r.drawRect(screen, screenX, screenY, bw, bh, fill)
 			vector.StrokeRect(screen, screenX, screenY, bw, bh, lineW, rim, false)
 		}
 	}
@@ -465,7 +487,7 @@ func (r *RaidRenderer) drawRoomGeometry(screen *ebiten.Image, room shared.RoomSt
 		sy := float32(offset.Y + (rift.Area.Y-camera.Y)*scale)
 		sw, sh := float32(rift.Area.W*scale), float32(rift.Area.H*scale)
 		// Faint fill.
-		vector.DrawFilledRect(screen, sx, sy, sw, sh, color.RGBA{clr.R, clr.G, clr.B, uint8(float64(clr.A) * 0.18)}, false)
+		r.drawRect(screen, sx, sy, sw, sh, color.RGBA{clr.R, clr.G, clr.B, uint8(float64(clr.A) * 0.18)})
 		lineW := float32(math.Max(2, scale*1.5))
 		vector.StrokeRect(screen, sx, sy, sw, sh, lineW, clr, false)
 		// Vertical shimmer lines.
@@ -556,7 +578,7 @@ func (r *RaidRenderer) DrawDebugOverlays(screen *ebiten.Image, room shared.RoomS
 		sy := float32(offset.Y + (zone.Y-camera.Y)*scale)
 		sw := float32(zone.W * scale)
 		sh := float32(zone.H * scale)
-		vector.DrawFilledRect(screen, sx, sy, sw, sh, color.RGBA{30, 180, 160, 40}, false)
+		r.drawRect(screen, sx, sy, sw, sh, color.RGBA{30, 180, 160, 40})
 		vector.StrokeRect(screen, sx, sy, sw, sh, float32(math.Max(1, scale)), color.RGBA{40, 220, 190, 120}, false)
 	}
 	// Portal zones — gold fill (unconnected portal positions).
@@ -565,7 +587,7 @@ func (r *RaidRenderer) DrawDebugOverlays(screen *ebiten.Image, room shared.RoomS
 		sy := float32(offset.Y + (zone.Y-camera.Y)*scale)
 		sw := float32(zone.W * scale)
 		sh := float32(zone.H * scale)
-		vector.DrawFilledRect(screen, sx, sy, sw, sh, color.RGBA{255, 200, 60, 30}, false)
+		r.drawRect(screen, sx, sy, sw, sh, color.RGBA{255, 200, 60, 30})
 		vector.StrokeRect(screen, sx, sy, sw, sh, float32(math.Max(1, scale)), color.RGBA{255, 220, 80, 100}, false)
 		cx32 := sx + sw*0.5
 		vector.StrokeLine(screen, cx32, sy+2, cx32, sy+sh-2, float32(math.Max(1, scale*0.5)), color.RGBA{255, 240, 140, 160}, false)

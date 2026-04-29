@@ -92,11 +92,12 @@ type Game struct {
 	lastPingAt    time.Time
 	pingMS        float64
 
-	camera       shared.Vec2
-	viewOffset   shared.Vec2
-	worldScale   float64
-	startedAt    time.Time
-	debugPhysics bool
+	camera              shared.Vec2
+	viewOffset          shared.Vec2
+	worldScale          float64
+	startedAt           time.Time
+	debugPhysics        bool
+	useSpriteRectRender bool
 
 	inputOverlayKeys []inputKeyOverlay
 	whitePixelImg    *ebiten.Image
@@ -126,23 +127,23 @@ func NewGame(baseURL string, manifestPath string, roomsDir string) (*Game, error
 	}
 
 	game := &Game{
-		baseURL:        baseURL,
-		bundle:         bundle,
-		assets:         assets,
-		renderer:       NewRaidRenderer(assets),
-		controls:       controls,
-		network:        NewNetworkClient(baseURL),
-		uiEvents:       make(chan func(), 64),
-		screen:         screenLogin,
-		authMode:       "sign-up",
-		email:          "player@example.com",
-		password:       "1234",
-		status:         "F2 to sign-up/sign-in. Tab to switch. Enter to continue.",
-		settingsPath:   settingsPath,
-		settingsStatus: settingsStatus,
-		interpolators:  make(map[string]*Interpolator),
-		worldScale:     float64(shared.ScreenHeight) / 480.0,
-		startedAt:      time.Now(),
+		baseURL:             baseURL,
+		bundle:              bundle,
+		assets:              assets,
+		controls:            controls,
+		network:             NewNetworkClient(baseURL),
+		uiEvents:            make(chan func(), 64),
+		screen:              screenLogin,
+		authMode:            "sign-up",
+		email:               "player@example.com",
+		password:            "1234",
+		status:              "F2 to sign-up/sign-in. Tab to switch. Enter to continue.",
+		settingsPath:        settingsPath,
+		settingsStatus:      settingsStatus,
+		interpolators:       make(map[string]*Interpolator),
+		worldScale:          float64(shared.ScreenHeight) / 480.0,
+		startedAt:           time.Now(),
+		useSpriteRectRender: true,
 		bots: [2]*LocalBot{
 			NewLocalBot("__bot_bg__", "Bot-BG"), // [0] background room
 			NewLocalBot("__bot_fg__", "Bot-FG"), // [1] same room as player
@@ -154,6 +155,7 @@ func NewGame(baseURL string, manifestPath string, roomsDir string) (*Game, error
 	// 1. Создаем белый пиксель (замена пакету vector)
 	game.whitePixelImg = ebiten.NewImage(1, 1)
 	game.whitePixelImg.Fill(color.White)
+	game.renderer = NewRaidRenderer(assets, game.whitePixelImg)
 
 	// 2. Настраиваем кнопки
 	baseX, baseY := float64(shared.ScreenWidth)-220.0, float64(shared.ScreenHeight)-150.0
@@ -413,6 +415,10 @@ func (g *Game) syncSelectedClassByID(classID string) {
 func (g *Game) updateGame() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyF3) {
 		g.debugPhysics = !g.debugPhysics
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF4) {
+		g.useSpriteRectRender = !g.useSpriteRectRender
+		g.renderer.SetUseSpriteRectOps(g.useSpriteRectRender)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		g.network.Close()
@@ -1044,7 +1050,7 @@ func (g *Game) drawPhysicsDebug(screen *ebiten.Image, activeRoomID string, entit
 	}
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Type: %s", roomType), 16, shared.ScreenHeight-40)
 
-	ebitenutil.DebugPrintAt(screen, "[F3] debug  cyan=portal  white=reveal-zone  rift=R/B/G  orange●=spawn", 16, shared.ScreenHeight-22)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("[F3] debug  [F4] sprite-rect=%t  cyan=portal  white=reveal-zone  rift=R/B/G  orange●=spawn", g.useSpriteRectRender), 16, shared.ScreenHeight-22)
 }
 
 func (g *Game) drawLoot(screen *ebiten.Image) {
