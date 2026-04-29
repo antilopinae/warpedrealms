@@ -2,6 +2,8 @@ package transport
 
 import (
 	"fmt"
+	"io"
+
 	"github.com/gorilla/websocket"
 	"warpedrealms/shared"
 	"warpedrealms/shared/minipb"
@@ -23,9 +25,15 @@ func WriteServerMessage(conn *websocket.Conn, _ Encoding, m shared.ServerMessage
 		}
 		w.Field(2, EncodeSnapshot(m.Snapshot, minipb.LittleEndian))
 	case "welcome":
-		if m.Welcome != nil {
-			w.Field(3, []byte(m.Welcome.PlayerID))
+		if m.Welcome == nil {
+			return fmt.Errorf("welcome nil")
 		}
+		w.Field(3, EncodeWelcome(m.Welcome, minipb.LittleEndian))
+	case "pong":
+		if m.Pong == nil {
+			return fmt.Errorf("pong nil")
+		}
+		w.Field(4, EncodePong(m.Pong, minipb.LittleEndian))
 	case "error":
 		w.Field(9, []byte(m.Error))
 	}
@@ -40,7 +48,10 @@ func ReadServerMessage(msgType int, data []byte, out *shared.ServerMessage) erro
 	for {
 		tag, p, err := r.Next()
 		if err != nil {
-			break
+			if err == io.EOF {
+				break
+			}
+			return err
 		}
 		switch tag {
 		case 1:
@@ -51,6 +62,18 @@ func ReadServerMessage(msgType int, data []byte, out *shared.ServerMessage) erro
 				return err
 			}
 			out.Snapshot = &s
+		case 3:
+			w, err := DecodeWelcome(p, minipb.LittleEndian)
+			if err != nil {
+				return err
+			}
+			out.Welcome = &w
+		case 4:
+			pg, err := DecodePong(p, minipb.LittleEndian)
+			if err != nil {
+				return err
+			}
+			out.Pong = &pg
 		case 9:
 			out.Error = string(p)
 		}
