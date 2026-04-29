@@ -23,6 +23,7 @@ type Peer struct {
 	playerID   string
 	playerName string
 	classID    string
+	layoutSent bool
 	conn       *websocket.Conn
 	send       chan shared.ServerMessage
 	room       *RaidRoom
@@ -1056,17 +1057,25 @@ func (r *RaidRoom) broadcastSnapshots() {
 
 func (r *RaidRoom) snapshotFor(playerID string) *shared.SnapshotMessage {
 	r.ensureAllPlayerLoadouts()
+	peer := r.peers[playerID]
 	player := r.players[playerID]
 	ackSeq := uint32(0)
 	if player != nil {
 		ackSeq = player.lastProcessedSeq
 	}
+
+	layout := (*shared.RaidLayoutState)(nil)
+	if peer != nil && !peer.layoutSent {
+		layout = &r.raid.Layout
+		peer.layoutSent = true
+	}
+
 	return &shared.SnapshotMessage{
 		ServerTime:       r.serverTime(),
 		Tick:             r.tick,
 		LocalPlayerID:    playerID,
 		LastProcessedSeq: ackSeq,
-		Layout:           &r.raid.Layout,
+		Layout:           layout,
 		Entities:         r.entitiesFor(playerID),
 		Loot:             r.lootStates(),
 		Raid:             r.raidStateFor(playerID),
